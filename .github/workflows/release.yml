@@ -19,6 +19,8 @@ jobs:
           major-keywords: BREAKING CHANGE
           minor-keywords: feat
           should-default-to-patch: true
+          commit-user: GitHub Actions
+          commit-user-email: 41898282+github-actions[bot]@users.noreply.github.com
 
       - run: yarn install --frozen-lockfile
       - name: Publish to Visual Studio Marketplace

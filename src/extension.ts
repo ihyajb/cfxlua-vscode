@@ -12,7 +12,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import moveFile from './moveFile';
 
-export const id = 'ihyajb.cfxlua-vscode';
+export const id = 'ihyajb.cfxlua-intellisense';
 export const extension = extensions.getExtension(id)!;
 export let storagePath = '';
 

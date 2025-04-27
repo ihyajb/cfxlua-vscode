@@ -1,10 +1,10 @@
 # Cfx Lua IntelliSense
 
-![](https://img.shields.io/visual-studio-marketplace/d/ihyajb.cfxlua-vscode) ![](https://img.shields.io/visual-studio-marketplace/i/ihyajb.cfxlua-vscode)
+![](https://img.shields.io/visual-studio-marketplace/d/ihyajb.cfxlua-intellisense) ![](https://img.shields.io/visual-studio-marketplace/i/ihyajb.cfxlua-intellisense)
 
 
 > [!NOTE]
-> Due to the fact the [orignal](https://github.com/overextended/cfxlua-vscode) extention being archived and github actions being disabled, I forked this as a way to keep it alive with updated natives
+> Due to the fact the [orignal](https://github.com/overextended/cfxlua-vscode) extention was archived and github actions were disabled, I forked this as a way to keep it alive with updated natives.
 
 _This extension is not authored, published, sponsored, nor endorsed by Cfx.re / R*._
 

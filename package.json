@@ -2,7 +2,7 @@
   "name": "cfxlua-intellisense",
   "displayName": "Cfx Lua IntelliSense",
   "description": "Natives and IntelliSense support for the Lua Script runtime used by FiveM and RedM.",
-  "version": "1.11.14",
+  "version": "1.11.15",
   "publisher": "ihyajb",
   "license": "MIT",
   "repository": {

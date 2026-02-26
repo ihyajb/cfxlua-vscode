@@ -1,6 +1,10 @@
 import { workspace } from 'vscode';
 import setLibrary from './setLibrary';
 import getSettingsScope from './getSettingsScope';
+import { log } from './logger';
+
+const VALID_GAMES = ['GTAV', 'RDR3'] as const;
+type Game = (typeof VALID_GAMES)[number];
 
 export default async function setNativeLibrary(game?: string) {
   const config = workspace.getConfiguration('cfxlua');
@@ -11,19 +15,22 @@ export default async function setNativeLibrary(game?: string) {
 
   await config.update('game', game, getSettingsScope());
 
-  game = game.toUpperCase();
+  const upperGame = game.toUpperCase() as Game;
 
-  if (game !== 'GTAV' && game !== 'RDR3') {
+  if (!VALID_GAMES.includes(upperGame)) {
+    log(`Invalid game identifier: ${game}`);
     return;
   }
 
-  if (game !== 'GTAV') {
-    await setLibrary(['natives/GTAV'], false);
+  // Remove all other game natives, then enable the selected one
+  const toRemove = VALID_GAMES.filter((g) => g !== upperGame).map(
+    (g) => `natives/${g}`,
+  );
+
+  if (toRemove.length > 0) {
+    await setLibrary(toRemove, false);
   }
 
-  if (game !== 'RDR3') {
-    await setLibrary(['natives/RDR3'], false);
-  }
-
-  await setLibrary([`natives/${game}`], true);
+  await setLibrary([`natives/${upperGame}`], true);
+  log(`Switched native library to ${upperGame}`);
 }

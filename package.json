@@ -27,17 +27,28 @@
         "command": "cfxlua.game.gtav",
         "title": "Use GTAV natives",
         "category": "CfxLua"
+      },
+      {
+        "command": "cfxlua.game.toggle",
+        "title": "Toggle Game (GTAV / RDR3)",
+        "category": "CfxLua"
       }
     ],
     "configuration": {
       "title": "CfxLua",
       "properties": {
         "cfxlua.game": {
+          "type": "string",
           "default": "gtav",
           "enum": [
             "gtav",
             "rdr3"
-          ]
+          ],
+          "enumDescriptions": [
+            "Grand Theft Auto V (FiveM)",
+            "Red Dead Redemption 3 (RedM)"
+          ],
+          "description": "Select which game's native definitions to load."
         }
       }
     }
@@ -75,10 +86,7 @@
     "@types/mocha": "^9.1.1",
     "@types/node": "^22.13.11",
     "@types/vscode": "^1.71.0",
-    "@typescript-eslint/eslint-plugin": "^5.31.0",
-    "@typescript-eslint/parser": "^5.31.0",
     "@vscode/test-electron": "^2.1.5",
-    "eslint": "^8.20.0",
     "glob": "^8.0.3",
     "mocha": "^10.0.0",
     "ts-loader": "^9.3.1",

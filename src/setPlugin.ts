@@ -1,7 +1,26 @@
 import { storagePath } from './extension';
 import getLuaConfig from './getLuaConfig';
 import getSettingsScope from './getSettingsScope';
+import { log } from './logger';
 import * as path from 'node:path';
+
+/** Nonstandard Lua operators supported by the Cfx runtime. */
+const NONSTANDARD_SYMBOLS = [
+  '/**/',
+  '`',
+  '+=',
+  '-=',
+  '*=',
+  '/=',
+  '<<=',
+  '>>=',
+  '&=',
+  '|=',
+  '^=',
+];
+
+/** Directories the Lua Language Server should ignore for performance. */
+const IGNORE_DIRS = ['.vscode', '.git', '.github', 'node_modules', '\\[cfx\\]'];
 
 export default async function setPlugin(enable: boolean) {
   const config = getLuaConfig();
@@ -12,26 +31,15 @@ export default async function setPlugin(enable: boolean) {
     await config.update('runtime.version', 'Lua 5.4', settingsScope);
     await config.update('runtime.plugin', pluginPath, settingsScope);
 
-    // Support extra symbols in LuaParser
+    // Ensure all Cfx-specific operators are registered
     const nonstandardSymbol: string[] =
-      config.get('runtime.nonstandardSymbol') || [];
-    [
-      '/**/',
-      '`',
-      '+=',
-      '-=',
-      '*=',
-      '/=',
-      '<<=',
-      '>>=',
-      '&=',
-      '|=',
-      '^=',
-    ].forEach((item) => {
-      if (!nonstandardSymbol.includes(item)) {
-        nonstandardSymbol.push(item);
+      config.get('runtime.nonstandardSymbol') ?? [];
+
+    for (const sym of NONSTANDARD_SYMBOLS) {
+      if (!nonstandardSymbol.includes(sym)) {
+        nonstandardSymbol.push(sym);
       }
-    });
+    }
 
     await config.update(
       'runtime.nonstandardSymbol',
@@ -39,22 +47,24 @@ export default async function setPlugin(enable: boolean) {
       settingsScope,
     );
 
-    // Disable diagnostics for files/directories (using .gitignore grammar)
-    // Drastically improves time to load workspace
-    const ignoreDir: string[] = config.get('workspace.ignoreDir') || [];
+    // Ignore common directories to drastically reduce workspace indexing time
+    const ignoreDir: string[] = config.get('workspace.ignoreDir') ?? [];
 
-    ['.vscode', '.git', '.github', 'node_modules', '\\[cfx\\]'].forEach((item) => {
-      if (!ignoreDir.includes(item)) {
-        ignoreDir.push(item);
+    for (const dir of IGNORE_DIRS) {
+      if (!ignoreDir.includes(dir)) {
+        ignoreDir.push(dir);
       }
-    });
+    }
 
     await config.update('workspace.ignoreDir', ignoreDir, settingsScope);
 
+    log('Plugin enabled');
     return;
   }
 
+  // On disable, only remove the plugin path if it's ours
   if (config.get('runtime.plugin') === pluginPath) {
     await config.update('runtime.plugin', undefined, settingsScope);
+    log('Plugin disabled');
   }
 }

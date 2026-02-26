@@ -2,38 +2,44 @@ import * as path from 'node:path';
 import { storagePath, id as extensionId } from './extension';
 import getLuaConfig from './getLuaConfig';
 import getSettingsScope from './getSettingsScope';
+import { log } from './logger';
 
+/**
+ * Adds or removes library folders from the Lua Language Server's
+ * `workspace.library` setting. Also cleans up stale entries from
+ * previous extension versions or the archived Overextended fork.
+ */
 export default async function setLibrary(folders: string[], enable: boolean) {
   const config = getLuaConfig();
-  const library: string[] = config.get('workspace.library')!;
+  const library: string[] = config.get('workspace.library') ?? [];
 
   for (const folder of folders) {
     const folderPath = path.join(storagePath, 'library', folder);
 
+    // Walk backwards so splicing doesn't shift unvisited indices
     for (let i = library.length - 1; i >= 0; i--) {
-      const el = library[i];
+      const entry = library[i];
 
-      if (el.includes(extensionId) && !el.includes('globalStorage')) {
+      // Remove legacy entries that reference the extension root instead of globalStorage
+      if (entry.includes(extensionId) && !entry.includes('globalStorage')) {
         library.splice(i, 1);
         continue;
       }
 
-      // Removes old OX library folders to stop the over displaying like 3 times lol
-      if (el.includes('overextended.cfxlua-vscode')) {
+      // Remove leftover entries from the archived Overextended fork
+      if (entry.includes('overextended.cfxlua-vscode')) {
         library.splice(i, 1);
       }
     }
 
     const index = library.indexOf(folderPath);
 
-    if (enable) {
-      if (index === -1) {
-        library.push(folderPath);
-      }
-    } else {
-      if (index > -1) {
-        library.splice(index, 1);
-      }
+    if (enable && index === -1) {
+      library.push(folderPath);
+      log(`Library added: ${folderPath}`);
+    } else if (!enable && index > -1) {
+      library.splice(index, 1);
+      log(`Library removed: ${folderPath}`);
     }
   }
 

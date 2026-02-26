@@ -1,5 +1,7 @@
-import { workspace } from 'vscode';
+import { workspace, ConfigurationTarget } from 'vscode';
 
-export default function getSettingsScope() {
-  return workspace.workspaceFile ? 2 : 1;
+export default function getSettingsScope(): ConfigurationTarget {
+  return workspace.workspaceFile
+    ? ConfigurationTarget.Workspace
+    : ConfigurationTarget.Global;
 }

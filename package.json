@@ -1,7 +1,7 @@
 {
   "name": "cfxlua-intellisense",
-  "displayName": "Cfx Lua IntelliSense",
-  "description": "Natives and IntelliSense support for the Lua Script runtime used by FiveM and RedM.",
+  "displayName": "Cfx Lua Native/Type IntelliSense",
+  "description": "IntelliSense support for Natives and Types in the Lua Script runtime used by FiveM and RedM.",
   "version": "1.11.17",
   "publisher": "ihyajb",
   "license": "MIT",
@@ -47,7 +47,10 @@
     "FiveM",
     "RedM",
     "CFX",
-    "IntelliSense"
+    "IntelliSense",
+    "Natives",
+    "Types",
+    "VS Code"
   ],
   "icon": "logo.png",
   "activationEvents": [

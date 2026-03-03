@@ -1,12 +1,17 @@
-import { window } from 'vscode';
+import { type LogOutputChannel, window } from 'vscode';
 
-let outputChannel: ReturnType<typeof window.createOutputChannel> | undefined;
+let outputChannel: LogOutputChannel | undefined;
 
-export function initLogger() {
-  outputChannel = window.createOutputChannel('CfxLua');
+export function initLogger(): LogOutputChannel {
+  outputChannel = window.createOutputChannel('CfxLua', { log: true });
+  outputChannel.show(true); // Show the output channel, preserve focus
   return outputChannel;
 }
 
 export function log(message: string) {
-  outputChannel?.appendLine(`[${new Date().toLocaleTimeString()}] ${message}`);
+  outputChannel?.info(message);
+}
+
+export function warn(message: string) {
+  outputChannel?.warn(message);
 }

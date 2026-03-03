@@ -34,7 +34,8 @@ function updateStatusBar(game: string) {
 }
 
 export async function activate(context: ExtensionContext) {
-  context.subscriptions.push(initLogger());
+  const logger = initLogger();
+  context.subscriptions.push(logger);
 
   const game = workspace.getConfiguration('cfxlua').get('game', 'gtav');
   const storageUri = context.globalStorageUri;

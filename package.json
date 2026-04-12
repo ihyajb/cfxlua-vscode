@@ -1,6 +1,6 @@
 {
   "name": "cfxlua-intellisense-aj",
-  "displayName": "Cfx Lua Native/Type IntelliSense",
+  "displayName": "FiveM/RedM Lua Type/Native IntelliSense",
   "description": "IntelliSense support for Natives and Types in the Lua Script runtime used by FiveM and RedM.",
   "version": "1.11.23",
   "publisher": "ihyajb",

@@ -16,7 +16,7 @@ import { initLogger, log } from './logger';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-export const id = 'ihyajb.cfxlua-intellisense';
+export const id = 'ihyajb.cfxlua-intellisense-aj';
 export const extension = extensions.getExtension(id)!;
 export let storagePath = '';
 

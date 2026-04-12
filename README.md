@@ -1,6 +1,6 @@
 # Cfx Lua IntelliSense
 
-[![VS Marketplace Downloads](https://img.shields.io/visual-studio-marketplace/d/ihyajb.cfxlua-intellisense)](https://marketplace.visualstudio.com/items?itemName=ihyajb.cfxlua-intellisense) [![VS Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/ihyajb.cfxlua-intellisense)](https://marketplace.visualstudio.com/items?itemName=ihyajb.cfxlua-intellisense) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![VS Marketplace Downloads](https://img.shields.io/visual-studio-marketplace/d/ihyajb.cfxlua-intellisense-aj)](https://marketplace.visualstudio.com/items?itemName=ihyajb.cfxlua-intellisense-aj) [![VS Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/ihyajb.cfxlua-intellisense-aj)](https://marketplace.visualstudio.com/items?itemName=ihyajb.cfxlua-intellisense-aj) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A Visual Studio Code extension that brings full IntelliSense, auto-completion, diagnostics, and type annotations to the Lua scripting environment used by [FiveM](https://fivem.net/) and [RedM](https://redm.gg/). Built on top of the [Lua Language Server](https://marketplace.visualstudio.com/items?itemName=sumneko.lua) by sumneko, this extension automatically configures your workspace with the correct runtime definitions, native function signatures, and LuaGLM type information so you can write Cfx.re Lua scripts with confidence.
 

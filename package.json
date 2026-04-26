@@ -2,7 +2,7 @@
   "name": "cfxlua-intellisense-aj",
   "displayName": "FiveM/RedM Lua Type/Native IntelliSense",
   "description": "IntelliSense support for Natives and Types in the Lua Script runtime used by FiveM and RedM.",
-  "version": "1.11.25",
+  "version": "1.11.26",
   "publisher": "ihyajb",
   "license": "MIT",
   "repository": {

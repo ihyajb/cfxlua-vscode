@@ -68,3 +68,4 @@ export default async function setPlugin(enable: boolean) {
     log('Plugin disabled');
   }
 }
+//test

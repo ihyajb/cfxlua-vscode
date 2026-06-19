@@ -61,7 +61,8 @@
     "IntelliSense",
     "Natives",
     "Types",
-    "VS Code"
+    "VS Code",
+    "Cursor"
   ],
   "icon": "logo.png",
   "activationEvents": [

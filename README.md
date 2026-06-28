@@ -1,6 +1,6 @@
 # Cfx Lua IntelliSense
 
-[![VS Marketplace Downloads](https://img.shields.io/visual-studio-marketplace/d/ihyajb.cfxlua-intellisense-aj)](https://marketplace.visualstudio.com/items?itemName=ihyajb.cfxlua-intellisense-aj) [![VS Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/ihyajb.cfxlua-intellisense-aj)](https://marketplace.visualstudio.com/items?itemName=ihyajb.cfxlua-intellisense-aj) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![VS Marketplace Downloads](https://img.shields.io/visual-studio-marketplace/d/ihyajb.cfxlua-intellisense-aj)](https://marketplace.visualstudio.com/items?itemName=ihyajb.cfxlua-intellisense-aj) [![VS Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/ihyajb.cfxlua-intellisense-aj)](https://marketplace.visualstudio.com/items?itemName=ihyajb.cfxlua-intellisense-aj) [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/ihyajb/cfxlua-intellisense-aj)](https://open-vsx.org/extension/ihyajb/cfxlua-intellisense-aj) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A Visual Studio Code extension that brings full IntelliSense, auto-completion, diagnostics, and type annotations to the Lua scripting environment used by [FiveM](https://fivem.net/) and [RedM](https://redm.gg/). Built on top of the [Lua Language Server](https://marketplace.visualstudio.com/items?itemName=sumneko.lua) by sumneko, this extension automatically configures your workspace with the correct runtime definitions, native function signatures, and LuaGLM type information so you can write Cfx.re Lua scripts with confidence.
 
@@ -55,7 +55,7 @@ When you open a Lua file in VS Code with this extension active, it will:
 
 ## Prerequisites
 
-- **Visual Studio Code** v1.71.0 or later
+- **Visual Studio Code** or **[Cursor](https://cursor.com/)** v1.71.0 or later
 - **[Lua Language Server](https://marketplace.visualstudio.com/items?itemName=sumneko.lua)** extension by sumneko (installed automatically as a dependency)
 
 ---
@@ -68,6 +68,17 @@ When you open a Lua file in VS Code with this extension active, it will:
 2. Go to the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
 3. Search for **Cfx Lua IntelliSense** by `ihyajb`.
 4. Click **Install**.
+
+### From Cursor (Open VSX)
+
+[Cursor](https://cursor.com/) uses the [Open VSX Registry](https://open-vsx.org/) for its built-in extension marketplace.
+
+1. Open Cursor.
+2. Go to the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
+3. Search for **Cfx Lua IntelliSense** or publisher `ihyajb`.
+4. Click **Install**.
+
+You can also install directly from [Open VSX](https://open-vsx.org/extension/ihyajb/cfxlua-intellisense-aj).
 
 ---
 

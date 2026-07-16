@@ -39,7 +39,9 @@ jobs:
       # artifact. Skipped until the OPEN_VSX_TOKEN secret is configured
       # (requires the 'ihyajb' namespace to exist on open-vsx.org).
       - name: Publish to Open VSX Registry
-        if: ${{ secrets.OPEN_VSX_TOKEN != '' }}
+        if: ${{ env.OPEN_VSX_TOKEN != '' }}
+        env:
+          OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
         uses: HaaLeo/publish-vscode-extension@v2
         with:
           pat: ${{ secrets.OPEN_VSX_TOKEN }}

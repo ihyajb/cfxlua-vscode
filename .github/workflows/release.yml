@@ -1,17 +1,20 @@
 name: Update VSCode extension
-on: [push, workflow_dispatch]
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   bump:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
-          node-version: 16
+          node-version: 22
 
       - name: Bumping version
         uses: jpb06/bump-package@latest
@@ -24,8 +27,22 @@ jobs:
 
       - run: yarn install --frozen-lockfile
       - name: Publish to Visual Studio Marketplace
-        uses: HaaLeo/publish-vscode-extension@v1
+        id: vs-marketplace
+        uses: HaaLeo/publish-vscode-extension@v2
         with:
           pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
           registryUrl: https://marketplace.visualstudio.com
           yarn: true
+          skipDuplicate: true
+
+      # Reuses the exact .vsix built above so both registries get the same
+      # artifact. Skipped until the OPEN_VSX_TOKEN secret is configured
+      # (requires the 'ihyajb' namespace to exist on open-vsx.org).
+      - name: Publish to Open VSX Registry
+        if: ${{ secrets.OPEN_VSX_TOKEN != '' }}
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.OPEN_VSX_TOKEN }}
+          registryUrl: https://open-vsx.org
+          extensionFile: ${{ steps.vs-marketplace.outputs.vsixPath }}
+          skipDuplicate: true

@@ -1,20 +1,22 @@
+import * as os from 'node:os';
 import {
+  ConfigurationTarget,
   type ExtensionContext,
-  extensions,
-  workspace,
-  commands,
-  window,
-  Uri,
   StatusBarAlignment,
   type StatusBarItem,
+  type Uri,
+  commands,
+  extensions,
+  window,
+  workspace,
 } from 'vscode';
-import setPlugin from './setPlugin';
+import ensureStorage from './ensureStorage';
+import { getBaseScope } from './getSettingsScope';
+import { initLogger, log } from './logger';
 import setLibrary from './setLibrary';
 import setNativeLibrary from './setNativeLibrary';
-import copyToStorage from './moveFile';
-import { initLogger, log } from './logger';
-import * as path from 'node:path';
-import * as os from 'node:os';
+import setPlugin from './setPlugin';
+import toTildePath from './toTildePath';
 
 export const id = 'ihyajb.cfxlua-intellisense-aj';
 export const extension = extensions.getExtension(id)!;
@@ -25,6 +27,13 @@ const GAME_LABELS: Record<string, string> = {
   rdr3: 'RDR3',
 };
 
+const ALL_LIBRARY_FOLDERS = [
+  'runtime',
+  'natives/CFX-NATIVE',
+  'natives/GTAV',
+  'natives/RDR3',
+];
+
 let statusBarItem: StatusBarItem;
 
 function updateStatusBar(game: string) {
@@ -33,40 +42,33 @@ function updateStatusBar(game: string) {
   statusBarItem.tooltip = `Current: ${label} — Click to switch`;
 }
 
+/** The effective game for a resource, honoring workspace-folder overrides. */
+function getGameFor(resource?: Uri): string {
+  return workspace
+    .getConfiguration('cfxlua', resource ?? null)
+    .get('game', 'gtav');
+}
+
 export async function activate(context: ExtensionContext) {
   context.subscriptions.push(initLogger());
 
   const game = workspace.getConfiguration('cfxlua').get('game', 'gtav');
-  const storageUri = context.globalStorageUri;
-  const sourceUri = Uri.joinPath(extension.extensionUri, 'plugin');
-  const platform = os.platform();
-  storagePath = storageUri.toString();
 
-  if (platform === 'win32') {
-    storagePath = path.join(
-      '~',
-      storagePath.substring(storagePath.indexOf('AppData')),
-    );
-  } else if (platform === 'darwin') {
-    storagePath = path.join(
-      '~',
-      storagePath.substring(storagePath.indexOf('Library')),
-    );
-  }
+  // `~`-relative so the value written to settings.json stays portable
+  // across machines; file I/O always uses real Uris, never this string
+  storagePath = toTildePath(context.globalStorageUri.fsPath, os.homedir());
 
-  log(`Platform: ${platform}, Game: ${game}`);
+  log(`Platform: ${os.platform()}, Game: ${game}`);
   log(`Storage path: ${storagePath}`);
 
   try {
-    await Promise.all([
-      copyToStorage('plugin.lua', sourceUri, storageUri),
-      copyToStorage('library', sourceUri, storageUri),
-    ]);
+    await ensureStorage(context);
 
     await setPlugin(true);
     await setLibrary(
       ['runtime', 'natives/CFX-NATIVE', `natives/${game.toUpperCase()}`],
       true,
+      { target: getBaseScope() },
     );
 
     log('Extension activated successfully');
@@ -93,29 +95,40 @@ export async function activate(context: ExtensionContext) {
     ),
 
     commands.registerCommand('cfxlua.game.toggle', () => {
-      const current = workspace
-        .getConfiguration('cfxlua')
-        .get('game', 'gtav');
+      const current = getGameFor(window.activeTextEditor?.document.uri);
       setNativeLibrary(current === 'gtav' ? 'rdr3' : 'gtav');
     }),
 
-    // React to settings changes (e.g. user edits settings.json directly)
-    workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('cfxlua.game')) {
-        const newGame = workspace
-          .getConfiguration('cfxlua')
-          .get('game', 'gtav');
-        updateStatusBar(newGame);
-        log(`Game setting changed to: ${newGame}`);
+    // Reflect folder-level game overrides as the user moves between editors
+    window.onDidChangeActiveTextEditor((editor) => {
+      updateStatusBar(getGameFor(editor?.document.uri));
+    }),
+
+    // Apply the setting when it's edited directly (settings.json, Settings
+    // Sync) — not just via our commands. setNativeLibrary only writes values
+    // that differ, so its own update doesn't re-trigger this in a loop.
+    workspace.onDidChangeConfiguration(async (e) => {
+      if (!e.affectsConfiguration('cfxlua.game')) {
+        return;
       }
+
+      const newGame = getGameFor(window.activeTextEditor?.document.uri);
+      updateStatusBar(newGame);
+      log(`Game setting changed to: ${newGame}`);
+      await setNativeLibrary(newGame);
     }),
   );
 }
 
 export async function deactivate() {
   await setPlugin(false);
-  await setLibrary(
-    ['runtime', 'natives/CFX-NATIVE', 'natives/GTAV', 'natives/RDR3'],
-    false,
-  );
+  await setLibrary(ALL_LIBRARY_FOLDERS, false, { target: getBaseScope() });
+
+  // Also clear folder-level entries written for multi-root workspaces
+  for (const folder of workspace.workspaceFolders ?? []) {
+    await setLibrary(ALL_LIBRARY_FOLDERS, false, {
+      target: ConfigurationTarget.WorkspaceFolder,
+      folder,
+    });
+  }
 }

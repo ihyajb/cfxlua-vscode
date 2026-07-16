@@ -1,5 +1,5 @@
-import { workspace } from 'vscode';
+import { type Uri, workspace } from 'vscode';
 
-export default function getLuaConfig() {
-  return workspace.getConfiguration('Lua');
+export default function getLuaConfig(resource?: Uri) {
+  return workspace.getConfiguration('Lua', resource ?? null);
 }

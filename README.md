@@ -5,7 +5,7 @@
 A Visual Studio Code extension that brings full IntelliSense, auto-completion, diagnostics, and type annotations to the Lua scripting environment used by [FiveM](https://fivem.net/) and [RedM](https://redm.gg/). Built on top of the [Lua Language Server](https://marketplace.visualstudio.com/items?itemName=sumneko.lua) by sumneko, this extension automatically configures your workspace with the correct runtime definitions, native function signatures, and LuaGLM type information so you can write Cfx.re Lua scripts with confidence.
 
 > [!NOTE]
-> This project is an independently maintained fork. The [original repository](https://github.com/overextended/cfxlua-vscode) by Overextended was archived and its CI/CD pipeline was disabled, meaning native definitions could no longer be updated. This fork exists to keep the extension alive, with actively updated native definitions and continued maintenance.
+> This project is an independently maintained fork. The [original repository](https://github.com/overextended/cfxlua-vscode) by Overextended was archived and its CI/CD pipeline was disabled, meaning native definitions could no longer be updated. This fork exists to keep the extension alive, with native definitions refreshed weekly from [fivem-lls-addon](https://github.com/ihyajb/fivem-lls-addon) via automated CI, and continued maintenance.
 >
 > **This extension is not authored, published, sponsored, nor endorsed by Cfx.re or Rockstar Games.**
 
@@ -75,10 +75,11 @@ When you open a Lua file in VS Code with this extension active, it will:
 
 Once installed, the extension activates automatically whenever you open a `.lua` file. There is no manual setup required. Your workspace will be configured with the appropriate Lua Language Server settings on activation.
 
-By default, **GTA V (FiveM) natives** are loaded. To switch to RedM natives, use the Command Palette:
+By default, **GTA V (FiveM) natives** are loaded. To switch to RedM natives, click the **`Game: GTA V` status bar item** in the bottom-left corner to toggle between games, or use the Command Palette:
 
 - `Ctrl+Shift+P` → **CfxLua: Use RDR3 natives**
 - `Ctrl+Shift+P` → **CfxLua: Use GTAV natives**
+- `Ctrl+Shift+P` → **CfxLua: Toggle Game (GTAV / RDR3)**
 
 Your selection is persisted in your VS Code settings.
 
@@ -92,7 +93,7 @@ The extension exposes a single setting:
 |---------|------|---------|-------------|
 | `cfxlua.game` | `"gtav"` \| `"rdr3"` | `"gtav"` | Determines which set of game-specific natives to load into the language server. |
 
-You can change this in your VS Code `settings.json`:
+You can change this in your VS Code `settings.json` — the change is applied immediately (including when it arrives via Settings Sync):
 
 ```json
 {
@@ -100,14 +101,19 @@ You can change this in your VS Code `settings.json`:
 }
 ```
 
-Or use the provided commands from the Command Palette:
+Or use the provided commands from the Command Palette (also available via the status bar toggle):
 
 | Command | Description |
 |---------|-------------|
 | **CfxLua: Use GTAV natives** | Switch to GTA V / FiveM native definitions |
 | **CfxLua: Use RDR3 natives** | Switch to Red Dead Redemption 3 / RedM native definitions |
+| **CfxLua: Toggle Game (GTAV / RDR3)** | Switch to whichever game isn't currently active |
 
 When switching games, the extension will remove the previous game's native library and add the new one, keeping CFX shared natives always active.
+
+### Multi-root workspaces
+
+`cfxlua.game` is resource-scoped, so in a multi-root workspace each folder can select its own game — FiveM and RedM resources can coexist in one window. Switching games applies to the workspace folder of the file you're currently editing, and the status bar reflects the game for the active editor.
 
 ---
 
@@ -250,7 +256,7 @@ The plugin ignores files inside `.vscode` directories and files starting with `-
 
 When the extension activates (triggered by opening any `.lua` file):
 
-1. **File Migration** — The bundled `plugin.lua` and `library/` directory are copied from the extension's install location to VS Code's global storage for the extension. This ensures a stable path that persists across extension updates.
+1. **File Migration** — The bundled `plugin.lua` and `library/` directory are copied from the extension's install location to VS Code's global storage for the extension. This ensures a stable path that persists across extension updates. The copy is versioned: a `.version` marker in global storage records which extension version last populated it, so the ~150-file library is only recopied after an extension update — not on every VS Code launch.
 
 2. **Plugin Registration** — The path to `plugin.lua` is written to the `Lua.runtime.plugin` setting, telling the Lua Language Server to load it.
 
@@ -260,7 +266,9 @@ When the extension activates (triggered by opening any `.lua` file):
 
 5. **Cleanup on Deactivation** — When the extension is deactivated or VS Code closes, the plugin path and all library paths added by the extension are removed from settings, leaving your configuration clean.
 
-Settings are applied at the **workspace level** when a workspace file is present, or at the **global (user) level** otherwise. This is determined by checking for `workspace.workspaceFile`.
+All paths written to settings are stored `~`-relative on every platform, so they stay portable across machines (e.g. via Settings Sync). Stale entries in older formats — including leftovers from the archived Overextended extension — are cleaned up automatically. Settings only get written when their value actually changes, so activation doesn't touch your `settings.json` or restart the language server unnecessarily.
+
+Settings are applied at the **workspace level** when a `.code-workspace` file is present, or at the **global (user) level** otherwise. In **multi-root workspaces**, game-specific settings (`cfxlua.game` and the corresponding `Lua.workspace.library` entries) are written at the **workspace folder level** for the folder of the active editor.
 
 ---
 
@@ -270,14 +278,18 @@ Settings are applied at the **workspace level** when a workspace file is present
 cfxlua-vscode/
 ├── src/                          # Extension source code (TypeScript)
 │   ├── extension.ts              # Entry point — activation, deactivation, command registration
+│   ├── ensureStorage.ts          # Version-gated copy of bundled files to global storage
 │   ├── getLuaConfig.ts           # Helper to access the Lua Language Server configuration
-│   ├── getSettingsScope.ts       # Determines workspace vs. global settings scope
-│   ├── moveFile.ts              # Copies bundled files to global storage
-│   ├── setLibrary.ts            # Manages Lua.workspace.library entries
-│   ├── setNativeLibrary.ts      # Handles game-specific native library switching
-│   └── setPlugin.ts             # Configures Lua.runtime.plugin and related settings
+│   ├── getSettingsScope.ts       # Determines folder vs. workspace vs. global settings scope
+│   ├── libraryUtils.ts           # Pure helpers for library-entry cleanup and comparison
+│   ├── logger.ts                 # "CfxLua" output channel logging
+│   ├── setLibrary.ts             # Manages Lua.workspace.library entries
+│   ├── setNativeLibrary.ts       # Handles game-specific native library switching
+│   ├── setPlugin.ts              # Configures Lua.runtime.plugin and related settings
+│   ├── toTildePath.ts            # Rewrites home-relative paths to portable ~ form
+│   └── test/unit/                # Mocha unit tests for the pure helpers
 │
-├── plugin/                       # Bundled plugin and library definitions
+├── plugin/                       # Git submodule (ihyajb/fivem-lls-addon) — plugin and library definitions
 │   ├── plugin.lua               # Lua Language Server plugin for Cfx-specific preprocessing
 │   ├── config.json              # Default Lua Language Server addon configuration
 │   └── library/
@@ -331,16 +343,21 @@ The plugin rewrites safe navigation syntax to prevent parse errors. If it's not 
 
 ### Extension settings aren't applying
 
-The extension applies settings at the workspace level if a `.code-workspace` file is open, otherwise at the user (global) level. Check the appropriate settings scope for your configuration.
+The extension applies settings at the workspace level if a `.code-workspace` file is open, otherwise at the user (global) level. In multi-root workspaces, game-specific settings are written per workspace folder (for the folder of the active editor). Check the appropriate settings scope for your configuration — folder settings override workspace settings, which override user settings.
+
+### Natives seem out of date
+
+Native definitions are pulled weekly from the [fivem-lls-addon](https://github.com/ihyajb/fivem-lls-addon) repository and shipped in extension updates, so make sure the extension is up to date. The definition files in global storage are refreshed automatically the first time a new extension version activates.
 
 ---
 
 ## Contributing
 
-1. Clone the repository:
+1. Clone the repository **including the `plugin` submodule** (without it, the extension has no native definitions to load):
    ```bash
-   git clone https://github.com/ihyajb/cfxlua-vscode.git
+   git clone --recurse-submodules https://github.com/ihyajb/cfxlua-vscode.git
    ```
+   If you already cloned without submodules, run `git submodule update --init --recursive`.
 2. Install dependencies:
    ```bash
    cd cfxlua-vscode
@@ -356,11 +373,17 @@ yarn run compile        # Development build
 yarn run package        # Production build
 ```
 
+### Testing
+
+```bash
+yarn test:unit          # Compile and run the mocha unit tests
+```
+
 ### Linting & Formatting
 
 ```bash
-pnpm biome lint --write
-pnpm biome format --write
+yarn biome lint --write src
+yarn biome format --write src
 ```
 
 ---

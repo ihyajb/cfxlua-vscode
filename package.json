@@ -39,6 +39,7 @@
       "properties": {
         "cfxlua.game": {
           "type": "string",
+          "scope": "resource",
           "default": "gtav",
           "enum": [
             "gtav",
@@ -77,6 +78,7 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint && yarn run format",
     "test": "node ./out/test/runTest.js",
+    "test:unit": "yarn run compile-tests && mocha \"out/test/unit/**/*.test.js\"",
     "format": "pnpm biome format --write",
     "lint": "pnpm biome lint --write"
   },

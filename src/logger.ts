@@ -1,6 +1,6 @@
-import { window } from 'vscode';
+import { window, OutputChannel } from 'vscode';
 
-let outputChannel: ReturnType<typeof window.createOutputChannel> | undefined;
+let outputChannel: OutputChannel | undefined;
 
 export function initLogger() {
   outputChannel = window.createOutputChannel('CfxLua');

@@ -1,37 +1,28 @@
 import * as path from 'node:path';
-import { storagePath, id as extensionId } from './extension';
+import { id as extensionId, storagePath } from './extension';
 import getLuaConfig from './getLuaConfig';
-import getSettingsScope from './getSettingsScope';
+import getSettingsScope, { type SettingsScope } from './getSettingsScope';
+import { arraysEqual, cleanLibraryEntries } from './libraryUtils';
 import { log } from './logger';
 
 /**
  * Adds or removes library folders from the Lua Language Server's
- * `workspace.library` setting. Also cleans up stale entries from
- * previous extension versions or the archived Overextended fork.
+ * `workspace.library` setting. Also cleans up stale entries from previous
+ * extension versions or the archived Overextended fork. The setting is only
+ * written when the value actually changes, to avoid dirtying settings.json
+ * and triggering needless LLS reloads.
  */
-export default async function setLibrary(folders: string[], enable: boolean) {
-  const config = getLuaConfig();
-  const library: string[] = config.get('workspace.library') ?? [];
+export default async function setLibrary(
+  folders: string[],
+  enable: boolean,
+  scope: SettingsScope = getSettingsScope(),
+) {
+  const config = getLuaConfig(scope.folder?.uri);
+  const current: string[] = config.get('workspace.library') ?? [];
+  const library = cleanLibraryEntries(current, extensionId);
 
   for (const folder of folders) {
     const folderPath = path.join(storagePath, 'library', folder);
-
-    // Walk backwards so splicing doesn't shift unvisited indices
-    for (let i = library.length - 1; i >= 0; i--) {
-      const entry = library[i];
-
-      // Remove legacy entries that reference the extension root instead of globalStorage
-      if (entry.includes(extensionId) && !entry.includes('globalStorage')) {
-        library.splice(i, 1);
-        continue;
-      }
-
-      // Remove leftover entries from the archived Overextended fork
-      if (entry.includes('overextended.cfxlua-vscode')) {
-        library.splice(i, 1);
-      }
-    }
-
     const index = library.indexOf(folderPath);
 
     if (enable && index === -1) {
@@ -43,5 +34,7 @@ export default async function setLibrary(folders: string[], enable: boolean) {
     }
   }
 
-  await config.update('workspace.library', library, getSettingsScope());
+  if (!arraysEqual(current, library)) {
+    await config.update('workspace.library', library, scope.target);
+  }
 }

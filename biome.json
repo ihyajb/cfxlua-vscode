@@ -1,6 +1,7 @@
 {
   "files": {
-    "include": ["./src/*.ts"]
+    "include": ["./src/**/*.ts"],
+    "ignore": ["./src/types/git.d.ts"]
   },
   "linter": {
     "enabled": true,

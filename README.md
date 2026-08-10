@@ -18,7 +18,12 @@ A Visual Studio Code extension that brings full IntelliSense, auto-completion, d
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Getting Started](#getting-started)
+- [Commands](#commands)
 - [Configuration](#configuration)
+- [Diagnostics](#diagnostics)
+- [Manifest Support](#manifest-support)
+- [Snippets](#snippets)
+- [Sharing Configuration With a Team](#sharing-configuration-with-a-team)
 - [Native Libraries](#native-libraries)
 - [Runtime Definitions](#runtime-definitions)
 - [LuaGLM Support](#luaglm-support)
@@ -40,6 +45,9 @@ When you open a Lua file in VS Code with this extension active, it will:
 3. **Provide runtime globals** — adds type definitions for Cfx runtime APIs like `Citizen.CreateThread`, `Citizen.Wait`, `PerformHttpRequest`, promises, statebags, events, JSON helpers, and msgpack utilities.
 4. **Add LuaGLM types** — defines `vector2`, `vector3`, `vector4`, `quat`, and matrix types with full operator overloads and method signatures, matching the custom Lua implementation used by Cfx.re.
 5. **Install a language server plugin** — a Lua plugin that handles Cfx-specific syntax edge cases, such as safe navigation operators (`foo?.bar`), `fxmanifest.lua` / `__resource.lua` global suppression, and FX asset protection headers.
+6. **Complete your resource manifest** — signatures and documentation for every documented `fxmanifest.lua` key, and a warning when one looks misspelled.
+7. **Catch wrong-side native calls** — a warning when a client-only native is called from a file your manifest loads with `server_scripts`, or the reverse.
+8. **Search the natives** — find any native by name, namespace or hash without leaving the editor, then insert the call, copy the hash, or open its documentation.
 
 ---
 
@@ -73,7 +81,9 @@ When you open a Lua file in VS Code with this extension active, it will:
 
 ## Getting Started
 
-Once installed, the extension activates automatically whenever you open a `.lua` file. There is no manual setup required. Your workspace will be configured with the appropriate Lua Language Server settings on activation.
+Once installed, the extension activates when you open a `.lua` file or a folder containing a resource manifest. There is no manual setup required.
+
+Configuration is applied only to workspaces that contain an `fxmanifest.lua` or `__resource.lua`, so opening an unrelated Lua project — a Neovim config, a LÖVE game — leaves its settings alone. If your resources live somewhere a manifest search won't reach them, set `cfxlua.autoConfigure` to `always`. Running any CfxLua command configures the current workspace regardless of that setting.
 
 By default, **GTA V (FiveM) natives** are loaded. To switch to RedM natives, click the **`Game: GTA V` status bar item** in the bottom-left corner to toggle between games, or use the Command Palette:
 
@@ -81,17 +91,36 @@ By default, **GTA V (FiveM) natives** are loaded. To switch to RedM natives, cli
 - `Ctrl+Shift+P` → **CfxLua: Use GTAV natives**
 - `Ctrl+Shift+P` → **CfxLua: Toggle Game (GTAV / RDR3)**
 
-Your selection is persisted in your VS Code settings.
+Your selection is persisted in your VS Code settings, and you can switch at any time — nothing is inferred from your manifest.
+
+---
+
+## Commands
+
+All commands are available from the Command Palette under the **CfxLua** category.
+
+| Command | Description |
+|---------|-------------|
+| **Use GTAV natives** | Switch to GTA V / FiveM native definitions |
+| **Use RDR3 natives** | Switch to Red Dead Redemption 3 / RedM native definitions |
+| **Toggle Game (GTAV / RDR3)** | Switch to whichever game isn't currently active |
+| **Find Native** | Search every native available to the current game, then insert the call, copy the hash or signature, or open the documentation |
+| **New Resource** | Scaffold a resource: a manifest with the right game and `lua54`, plus `client/`, `server/` and `shared/` stubs |
+| **Write .luarc.json** | Write the configuration into the workspace so it can be committed |
+| **Repair configuration** | Recopy the definition library and reapply every setting |
+| **Remove configuration** | Remove everything the extension added to your settings |
+| **Show Log** | Open the CfxLua output channel |
 
 ---
 
 ## Configuration
 
-The extension exposes a single setting:
-
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `cfxlua.game` | `"gtav"` \| `"rdr3"` | `"gtav"` | Determines which set of game-specific natives to load into the language server. |
+| `cfxlua.autoConfigure` | `"auto"` \| `"always"` \| `"never"` | `"auto"` | When to configure the Lua Language Server. `auto` requires a resource manifest in the workspace; `never` leaves configuration to the commands. |
+| `cfxlua.diagnostics.nativeScope` | `boolean` | `true` | Warn when a native is called from the wrong side. |
+| `cfxlua.diagnostics.manifestKeys` | `boolean` | `true` | Warn about misspelled manifest keys. |
 
 You can change this in your VS Code `settings.json` — the change is applied immediately (including when it arrives via Settings Sync):
 
@@ -114,6 +143,94 @@ When switching games, the extension will remove the previous game's native libra
 ### Multi-root workspaces
 
 `cfxlua.game` is resource-scoped, so in a multi-root workspace each folder can select its own game — FiveM and RedM resources can coexist in one window. Switching games applies to the workspace folder of the file you're currently editing, and the status bar reflects the game for the active editor.
+
+---
+
+## Diagnostics
+
+Two checks run on top of whatever the Lua Language Server reports. Both can be
+turned off individually.
+
+### Wrong-side native calls
+
+Every native is visible in every file, which makes calling a client-only native
+from a server script easy to do and impossible to notice until it fails at
+runtime. This check reads your manifest's `client_scripts`, `server_scripts` and
+`shared_scripts` globs to work out which side a file runs on, then warns when a
+native cannot work there:
+
+> `SetNuiFocus` is a client native, but this file is loaded as a server script.
+
+It is deliberately conservative, and stays silent unless it is certain:
+
+- A native is only reported when the sides it supports and the side the file runs
+  on have **nothing** in common.
+- Many game natives have a server-side RPC equivalent in the CFX set, so they are
+  valid on both sides and are never reported. There are 159 of these.
+- Shared scripts run on both sides, so they are never reported.
+- Files your manifest doesn't load are skipped entirely — nothing is assumed.
+- Runtime functions such as `Wait` and `CreateThread` are provided by the Lua
+  runtime rather than the game, and are never reported.
+
+Set `cfxlua.diagnostics.nativeScope` to `false` to turn this off.
+
+### Misspelled manifest keys
+
+A manifest may carry arbitrary metadata keys, which is why unknown globals aren't
+reported there — and why `client_scrpits` silently loads nothing. This check warns
+only when a key looks like a near-miss of a documented one:
+
+> Unknown manifest key "client_scrpits". Did you mean "client_scripts"?
+
+Custom metadata keys such as `ox_inventory` are left alone. Set
+`cfxlua.diagnostics.manifestKeys` to `false` to turn this off.
+
+---
+
+## Manifest Support
+
+`fxmanifest.lua` and `__resource.lua` get completion, hover documentation and
+argument types for every documented key — `fx_version`, `game`, `games`,
+`lua54`, the script and file lists, `dependency`, `provide`, `data_file`,
+`escrow_ignore`, the loading screen keys, and the rest. Value completion is
+offered where the set of valid values is known, so `fx_version` suggests
+`cerulean`, `bodacious` and `adamant`.
+
+Type `fxmanifest` in an empty manifest for a complete skeleton.
+
+---
+
+## Snippets
+
+Available in any Lua file:
+
+| Prefix | Expands to |
+|--------|------------|
+| `createthread` | `CreateThread(function() … end)` |
+| `threadloop` | A thread looping on a `Wait` interval |
+| `registernetevent` | `RegisterNetEvent` with a handler |
+| `addeventhandler` | `AddEventHandler` with a handler |
+| `registercommand` | `RegisterCommand` with `source, args, raw` |
+| `registerkeymapping` | `RegisterKeyMapping` for a rebindable key |
+| `exportfunction` | `exports('name', function() … end)` |
+| `callexport` | `exports['resource']:method()` |
+| `performhttprequest` | An HTTP request with status handling |
+| `promise` | A promise, awaited with `Citizen.Await` |
+| `statebaghandler` | `AddStateBagChangeHandler` |
+| `nuicallback` | `RegisterNUICallback` with a reply |
+| `fxmanifest` | A complete resource manifest |
+
+---
+
+## Sharing Configuration With a Team
+
+Everything above is written to your personal VS Code settings, which a team can't
+commit and `lua-language-server --check` can't read. **CfxLua: Write .luarc.json**
+writes the same runtime version, plugin path, nonstandard operators and library
+paths into a `.luarc.json` in your workspace, where it can be reviewed, committed,
+and picked up by teammates using other editors and by CI.
+
+Paths are written relative to `~`, so the file stays valid across machines.
 
 ---
 
@@ -254,17 +371,21 @@ The plugin ignores files inside `.vscode` directories and files starting with `-
 
 ## How It Works Under the Hood
 
-When the extension activates (triggered by opening any `.lua` file):
+When the extension activates (triggered by opening a `.lua` file, or by a resource manifest in the workspace):
+
+0. **Workspace Detection** — Unless `cfxlua.autoConfigure` says otherwise, the extension looks for an `fxmanifest.lua` or `__resource.lua` in the open folders. If it finds none, it registers its commands and stops there, leaving unrelated Lua projects untouched. A manifest appearing later, or a folder being added to a multi-root workspace, triggers configuration then.
 
 1. **File Migration** — The bundled `plugin.lua` and `library/` directory are copied from the extension's install location to VS Code's global storage for the extension. This ensures a stable path that persists across extension updates. The copy is versioned: a `.version` marker in global storage records which extension version last populated it, so the ~150-file library is only recopied after an extension update — not on every VS Code launch.
 
 2. **Plugin Registration** — The path to `plugin.lua` is written to the `Lua.runtime.plugin` setting, telling the Lua Language Server to load it.
 
-3. **Library Injection** — The paths to the appropriate native definition folders (`runtime/`, `natives/CFX-NATIVE/`, and either `natives/GTAV/` or `natives/RDR3/`) are appended to `Lua.workspace.library`, making all type information available to the language server.
+3. **Library Injection** — The paths to the appropriate definition folders (`runtime/`, `manifest/`, `natives/CFX-NATIVE/`, and either `natives/GTAV/` or `natives/RDR3/`) are appended to `Lua.workspace.library`, making all type information available to the language server.
 
 4. **Runtime Configuration** — The Lua runtime version is set to `5.4`, nonstandard symbols are registered, and workspace ignore directories are configured to improve performance.
 
-5. **Cleanup on Deactivation** — When the extension is deactivated or VS Code closes, the plugin path and all library paths added by the extension are removed from settings, leaving your configuration clean.
+5. **Native Index** — The compressed native index that ships with the definition library is read from the extension directory and kept in memory for native search, hash lookup and the wrong-side check. If it is missing, those features stay quiet and everything else works as normal.
+
+Settings are **left in place** when VS Code closes. Earlier versions removed them on deactivation and rewrote them on the next launch, which meant two `settings.json` writes and two language server reloads per session, a spurious diff in any tracked `.code-workspace`, and no guarantee the removal completed — VS Code does not wait for asynchronous work during shutdown. Use **CfxLua: Remove configuration** to undo everything deliberately.
 
 All paths written to settings are stored `~`-relative on every platform, so they stay portable across machines (e.g. via Settings Sync). Stale entries in older formats — including leftovers from the archived Overextended extension — are cleaned up automatically. Settings only get written when their value actually changes, so activation doesn't touch your `settings.json` or restart the language server unnecessarily.
 
@@ -277,22 +398,37 @@ Settings are applied at the **workspace level** when a `.code-workspace` file is
 ```
 cfxlua-vscode/
 ├── src/                          # Extension source code (TypeScript)
-│   ├── extension.ts              # Entry point — activation, deactivation, command registration
+│   ├── extension.ts              # Entry point — activation, command registration
+│   ├── isCfxWorkspace.ts         # Manifest-based detection of a Cfx project
 │   ├── ensureStorage.ts          # Version-gated copy of bundled files to global storage
 │   ├── getLuaConfig.ts           # Helper to access the Lua Language Server configuration
 │   ├── getSettingsScope.ts       # Determines folder vs. workspace vs. global settings scope
 │   ├── libraryUtils.ts           # Pure helpers for library-entry cleanup and comparison
 │   ├── logger.ts                 # "CfxLua" output channel logging
+│   ├── lua.ts                    # Minimal Lua tokenizer — tells code from strings and comments
+│   ├── manifest.ts               # Manifest parsing, script globs, key suggestions
+│   ├── nativeCatalog.ts          # Queries over the native index (pure)
+│   ├── nativesIndex.ts           # Loads the compressed native index
+│   ├── nativeScope.ts            # Finds natives called from the wrong side (pure)
+│   ├── diagnostics.ts            # Publishes the diagnostics to VS Code
+│   ├── findNative.ts             # "Find Native" quick pick
+│   ├── nativeHover.ts            # Resolves a native hash on hover
+│   ├── newResource.ts            # "New Resource" scaffold
+│   ├── writeLuarc.ts             # ".luarc.json" export
 │   ├── setLibrary.ts             # Manages Lua.workspace.library entries
 │   ├── setNativeLibrary.ts       # Handles game-specific native library switching
 │   ├── setPlugin.ts              # Configures Lua.runtime.plugin and related settings
 │   ├── toTildePath.ts            # Rewrites home-relative paths to portable ~ form
-│   └── test/unit/                # Mocha unit tests for the pure helpers
+│   └── test/unit/                # Unit tests for the pure modules
+│
+├── snippets/cfxlua.json          # Lua snippets for common Cfx patterns
 │
 ├── plugin/                       # Git submodule (ihyajb/fivem-lls-addon) — plugin and library definitions
 │   ├── plugin.lua               # Lua Language Server plugin for Cfx-specific preprocessing
 │   ├── config.json              # Default Lua Language Server addon configuration
+│   ├── natives-index.json.gz    # Every native as data, for search and diagnostics
 │   └── library/
+│       ├── manifest/            # fxmanifest.lua / __resource.lua definitions
 │       ├── runtime/             # Cfx runtime type definitions
 │       │   ├── citizen.lua      # Citizen API (CreateThread, Wait, etc.)
 │       │   ├── env.lua          # Environment globals (events, HTTP, statebags)
@@ -326,8 +462,10 @@ cfxlua-vscode/
 ### IntelliSense isn't working
 
 - Ensure the **Lua Language Server** extension is installed and enabled.
+- Check that the workspace contains an `fxmanifest.lua` or `__resource.lua`. Without one, the extension configures nothing — set `cfxlua.autoConfigure` to `always`, or run any CfxLua command to configure the workspace anyway.
+- Run **CfxLua: Show Log** to see what happened on activation.
+- Run **CfxLua: Repair configuration** to recopy the definition library and reapply every setting.
 - Check that `cfxlua.game` is set to a valid value (`"gtav"` or `"rdr3"`).
-- Open the Command Palette and run **Developer: Reload Window** to re-trigger activation.
 
 ### Natives from the old Overextended extension are duplicating
 
@@ -344,6 +482,14 @@ The plugin rewrites safe navigation syntax to prevent parse errors. If it's not 
 ### Extension settings aren't applying
 
 The extension applies settings at the workspace level if a `.code-workspace` file is open, otherwise at the user (global) level. In multi-root workspaces, game-specific settings are written per workspace folder (for the folder of the active editor). Check the appropriate settings scope for your configuration — folder settings override workspace settings, which override user settings.
+
+### A wrong-side warning is wrong
+
+Open an issue with the native's name and the manifest entry that loads the file — the check reads `client_scripts`, `server_scripts` and `shared_scripts` globs, so an unusual glob is the likeliest cause. In the meantime, set `cfxlua.diagnostics.nativeScope` to `false`.
+
+### Native search says the index is unavailable
+
+The index ships in the `plugin` submodule. In a development checkout, run `git submodule update --init --recursive`. Everything except native search, hash hover and the wrong-side check works without it.
 
 ### Natives seem out of date
 
@@ -376,8 +522,14 @@ yarn run package        # Production build
 ### Testing
 
 ```bash
-yarn test:unit          # Compile and run the mocha unit tests
+yarn test               # Compile and run the unit tests
+yarn run typecheck      # Typecheck without emitting
 ```
+
+Tests cover the pure modules: the tokenizer, manifest parsing and glob matching,
+the native catalog, and the wrong-side check — including cases asserted against
+the index that actually ships, so a data regression fails the build rather than
+reaching users as a false warning.
 
 ### Linting & Formatting
 

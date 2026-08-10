@@ -1,0 +1,128 @@
+{
+  "Create thread": {
+    "prefix": "createthread",
+    "body": ["CreateThread(function()", "\t$0", "end)"],
+    "description": "Run code in a coroutine on the next tick"
+  },
+  "Threaded loop": {
+    "prefix": "threadloop",
+    "body": [
+      "CreateThread(function()",
+      "\twhile true do",
+      "\t\t$0",
+      "\t\tWait(${1:1000})",
+      "\tend",
+      "end)"
+    ],
+    "description": "Coroutine looping on an interval"
+  },
+  "Register net event": {
+    "prefix": "registernetevent",
+    "body": [
+      "RegisterNetEvent('${1:resource}:${2:event}', function($3)",
+      "\t$0",
+      "end)"
+    ],
+    "description": "Register and handle an event usable across the network"
+  },
+  "Add event handler": {
+    "prefix": "addeventhandler",
+    "body": ["AddEventHandler('${1:event}', function($2)", "\t$0", "end)"],
+    "description": "Handle a local event"
+  },
+  "Register command": {
+    "prefix": "registercommand",
+    "body": [
+      "RegisterCommand('${1:name}', function(source, args, raw)",
+      "\t$0",
+      "end, ${2|false,true|})"
+    ],
+    "description": "Register a chat or console command"
+  },
+  "Register key mapping": {
+    "prefix": "registerkeymapping",
+    "body": [
+      "RegisterKeyMapping('${1:command}', '${2:description}', 'keyboard', '${3:E}')"
+    ],
+    "description": "Bind a command to a rebindable key"
+  },
+  "Export a function": {
+    "prefix": "exportfunction",
+    "body": ["exports('${1:name}', function($2)", "\t$0", "end)"],
+    "description": "Expose a function to other resources"
+  },
+  "Call an export": {
+    "prefix": "callexport",
+    "body": ["exports['${1:resource}']:${2:method}($0)"],
+    "description": "Call a function exported by another resource"
+  },
+  "HTTP request": {
+    "prefix": "performhttprequest",
+    "body": [
+      "PerformHttpRequest('${1:https://example.com}', function(status, body, headers)",
+      "\tif status ~= 200 then",
+      "\t\treturn print('request failed', status)",
+      "\tend",
+      "",
+      "\t$0",
+      "end, '${2|GET,POST,PUT,DELETE|}')"
+    ],
+    "description": "Make an HTTP request with a callback"
+  },
+  "Promise": {
+    "prefix": "promise",
+    "body": [
+      "local p = promise.new()",
+      "",
+      "$0",
+      "",
+      "return Citizen.Await(p)"
+    ],
+    "description": "Create a promise and await it"
+  },
+  "State bag handler": {
+    "prefix": "statebaghandler",
+    "body": [
+      "AddStateBagChangeHandler('${1:key}', nil, function(bagName, key, value, replicated)",
+      "\t$0",
+      "end)"
+    ],
+    "description": "React to a state bag value changing"
+  },
+  "NUI callback": {
+    "prefix": "nuicallback",
+    "body": [
+      "RegisterNUICallback('${1:name}', function(data, cb)",
+      "\t$0",
+      "\tcb({})",
+      "end)"
+    ],
+    "description": "Handle a message from the NUI page"
+  },
+  "Resource manifest": {
+    "prefix": "fxmanifest",
+    "body": [
+      "fx_version 'cerulean'",
+      "game '${1|gtav,rdr3,common|}'",
+      "lua54 'yes'",
+      "",
+      "name '${2:resource}'",
+      "author '${3:you}'",
+      "version '1.0.0'",
+      "",
+      "shared_scripts {",
+      "\t'shared/*.lua',",
+      "}",
+      "",
+      "client_scripts {",
+      "\t'client/*.lua',",
+      "}",
+      "",
+      "server_scripts {",
+      "\t'server/*.lua',",
+      "}",
+      "$0"
+    ],
+    "description": "Resource manifest skeleton"
+  }
+}

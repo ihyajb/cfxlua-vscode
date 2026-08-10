@@ -5,7 +5,7 @@
     "lib": ["ES2020"],
     "sourceMap": true,
     "rootDir": "src",
-    "types": ["@types/node", "@types/mocha"],
+    "types": ["node"],
     "strict": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,

@@ -5,7 +5,7 @@ import { getBaseScope } from './getSettingsScope';
 import { log } from './logger';
 
 /** Nonstandard Lua operators supported by the Cfx runtime. */
-const NONSTANDARD_SYMBOLS = [
+export const NONSTANDARD_SYMBOLS = [
   '/**/',
   '`',
   '+=',
@@ -20,7 +20,13 @@ const NONSTANDARD_SYMBOLS = [
 ];
 
 /** Directories the Lua Language Server should ignore for performance. */
-const IGNORE_DIRS = ['.vscode', '.git', '.github', 'node_modules', '\\[cfx\\]'];
+export const IGNORE_DIRS = [
+  '.vscode',
+  '.git',
+  '.github',
+  'node_modules',
+  '\\[cfx\\]',
+];
 
 /**
  * Note: `Lua.runtime.plugin` is window-scoped in the sumneko extension, and

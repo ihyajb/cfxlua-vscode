@@ -1,4 +1,5 @@
 import * as assert from 'node:assert';
+import { describe, it } from 'node:test';
 import { arraysEqual, cleanLibraryEntries } from '../../libraryUtils';
 
 const EXTENSION_ID = 'ihyajb.cfxlua-intellisense-aj';

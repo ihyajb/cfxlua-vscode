@@ -1,6 +1,6 @@
+import { describe, it } from 'bun:test';
 import * as assert from 'node:assert';
 import * as path from 'node:path';
-import { describe, it } from 'node:test';
 import toTildePath from '../../toTildePath';
 
 const home = path.resolve(path.sep, 'home', 'user');

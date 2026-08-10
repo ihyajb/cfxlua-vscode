@@ -52,13 +52,36 @@
   triggers configuration.
 - Definition libraries now include `library/manifest`.
 
+### Changed — toolchain
+
+- **Migrated to Bun.** It is now the package manager, bundler and test runner.
+  Removed yarn, webpack, ts-loader, mocha, glob and `@vscode/test-electron`; the
+  extension's only devDependencies are Bun's types, VS Code's types, TypeScript
+  (for `bun run typecheck`) and Biome.
+  - `bun build --target=node --format=cjs` produces the same shape of bundle
+    webpack did — CommonJS, `vscode` external — at a comparable size.
+  - `tsc` is kept for typechecking only; Bun does not typecheck.
+  - `@vscode/vsce` still packages the `.vsix`, run through `bunx`. It is a Node
+    CLI with no Bun integration, and it is the only supported way to build and
+    publish a VS Code extension, so this is as far as the migration goes. The
+    release workflow packages with `vsce --no-dependencies` and hands the
+    resulting file to the publish action, so publishing no longer depends on the
+    action being able to drive the package manager.
+  - `trustedDependencies` declares Biome, whose postinstall fetches its platform
+    binary; Bun blocks lifecycle scripts by default.
+- Added a `Verify` workflow: typecheck, tests, lint and a packaging dry run on
+  every push and pull request. The repository previously had CI only for
+  releases.
+
 ### Fixed
 
 - `yarn test` pointed at a test harness that was never written, so only part of the
-  suite could run. Tests now run under the Node test runner.
+  suite could run. Tests now run under `bun test`.
 - `lint` and `format` invoked `pnpm` from inside a yarn project, failing anywhere
   pnpm was not installed.
 - Biome only linted the top level of `src/`, skipping the tests and type
   declarations.
+- The `Extension Tests` launch configuration pointed at `out/test/suite/index`,
+  which never existed.
 - Removed a stale `fivem-lls-addon` submodule entry from `.gitmodules`; only
   `plugin` was ever checked out.

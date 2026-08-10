@@ -4,9 +4,10 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "npm",
-      "script": "watch",
-      "problemMatcher": "$ts-webpack-watch",
+      "type": "shell",
+      "command": "bun run watch",
+      "label": "watch",
+      "problemMatcher": [],
       "isBackground": true,
       "presentation": {
         "reveal": "never",
@@ -18,20 +19,11 @@
       }
     },
     {
-      "type": "npm",
-      "script": "watch-tests",
-      "problemMatcher": "$tsc-watch",
-      "isBackground": true,
-      "presentation": {
-        "reveal": "never",
-        "group": "watchers"
-      },
+      "type": "shell",
+      "command": "bun run typecheck",
+      "label": "typecheck",
+      "problemMatcher": "$tsc",
       "group": "build"
-    },
-    {
-      "label": "tasks: watch-tests",
-      "dependsOn": ["npm: watch", "npm: watch-tests"],
-      "problemMatcher": []
     }
   ]
 }

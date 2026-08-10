@@ -1,7 +1,7 @@
+import { describe, it } from 'bun:test';
 import * as assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { describe, it } from 'node:test';
 import { gunzipSync } from 'node:zlib';
 import {
   type IndexedNative,
@@ -271,24 +271,22 @@ describe('findWrongSideCalls against the shipped index', () => {
     shipped = undefined;
   }
 
-  it(
-    'flags a client-only native in a server script',
-    { skip: !shipped },
-    () => {
-      const found = findWrongSideCalls(
-        'SetNuiFocus(true, true)',
-        shipped as NativeCatalog,
-        'server',
-      );
+  const withIndex = it.skipIf(shipped === undefined);
 
-      assert.deepStrictEqual(
-        found.map((call) => call.name),
-        ['SetNuiFocus'],
-      );
-    },
-  );
+  withIndex('flags a client-only native in a server script', () => {
+    const found = findWrongSideCalls(
+      'SetNuiFocus(true, true)',
+      shipped as NativeCatalog,
+      'server',
+    );
 
-  it('leaves server-usable game natives alone', { skip: !shipped }, () => {
+    assert.deepStrictEqual(
+      found.map((call) => call.name),
+      ['SetNuiFocus'],
+    );
+  });
+
+  withIndex('leaves server-usable game natives alone', () => {
     // Every one of these is a GTAV native with a server RPC variant, and all
     // of them are routinely called from server scripts.
     const source = [
@@ -308,7 +306,7 @@ describe('findWrongSideCalls against the shipped index', () => {
     );
   });
 
-  it('leaves the runtime API alone on both sides', { skip: !shipped }, () => {
+  withIndex('leaves the runtime API alone on both sides', () => {
     const source = [
       'CreateThread(function() end)',
       'Wait(0)',

@@ -449,9 +449,8 @@ cfxlua-vscode/
 │               ├── ENTITY.lua
 │               └── ...
 │
-├── package.json                  # Extension manifest
-├── tsconfig.json                 # TypeScript configuration
-├── webpack.config.js             # Build configuration
+├── package.json                  # Extension manifest and bun scripts
+├── tsconfig.json                 # TypeScript configuration (typecheck only)
 └── biome.json                    # Linting and formatting configuration
 ```
 
@@ -504,26 +503,33 @@ Native definitions are pulled weekly from the [fivem-lls-addon](https://github.c
    git clone --recurse-submodules https://github.com/ihyajb/cfxlua-vscode.git
    ```
    If you already cloned without submodules, run `git submodule update --init --recursive`.
-2. Install dependencies:
+2. Install [Bun](https://bun.sh), then install dependencies:
    ```bash
    cd cfxlua-vscode
-   yarn install
+   bun install
    ```
 3. Open the project in VS Code and press `F5` to launch the Extension Development Host.
-4. The `npm: watch` task will automatically compile TypeScript on changes.
+4. The default build task runs `bun run watch`, which rebuilds the bundle on change.
 
 ### Building
 
+Bun is the whole toolchain — package manager, bundler and test runner. There is no
+webpack, no `tsc` build step, and no `node_modules` in the published extension.
+
 ```bash
-yarn run compile        # Development build
-yarn run package        # Production build
+bun run build           # Development build, with a source map
+bun run package         # Production build, minified
+bun run vsix            # Build and package a .vsix
 ```
+
+`bun build` targets Node and emits CommonJS, which is what the VS Code extension
+host loads, with `vscode` left external.
 
 ### Testing
 
 ```bash
-yarn test               # Compile and run the unit tests
-yarn run typecheck      # Typecheck without emitting
+bun test src            # Run the unit tests
+bun run typecheck       # Typecheck (Bun does not typecheck on its own)
 ```
 
 Tests cover the pure modules: the tokenizer, manifest parsing and glob matching,
@@ -534,8 +540,8 @@ reaching users as a false warning.
 ### Linting & Formatting
 
 ```bash
-yarn biome lint --write src
-yarn biome format --write src
+bun run lint            # Lint, format and organise imports, with fixes applied
+bun run check           # Report without fixing, as CI does
 ```
 
 ---

@@ -4,23 +4,20 @@ import {
   type ExtensionContext,
   StatusBarAlignment,
   type StatusBarItem,
+  type TextDocument,
   type Uri,
   commands,
   window,
   workspace,
 } from 'vscode';
-import { registerDiagnostics } from './diagnostics';
+import { invalidateManifests, registerDiagnostics } from './diagnostics';
 import ensureStorage from './ensureStorage';
 import { findNative } from './findNative';
 import { getBaseScope } from './getSettingsScope';
 import { MANIFEST_GLOB, shouldConfigure } from './isCfxWorkspace';
 import { initLogger, log, showLog } from './logger';
 import { registerNativeHover } from './nativeHover';
-import {
-  NativeCatalog,
-  loadNativeIndex,
-  resetNativeIndex,
-} from './nativesIndex';
+import { loadCatalog, loadScopeTable, resetNativeIndex } from './nativesIndex';
 import { newResource } from './newResource';
 import setLibrary from './setLibrary';
 import setNativeLibrary from './setNativeLibrary';
@@ -47,7 +44,6 @@ const ALL_LIBRARY_FOLDERS = [
 
 let statusBarItem: StatusBarItem | undefined;
 let configured = false;
-let catalog: NativeCatalog | undefined;
 
 /** The effective game for a resource, honoring workspace-folder overrides. */
 function getGameFor(resource?: Uri): string {
@@ -156,30 +152,18 @@ export async function activate(context: ExtensionContext) {
 
   updateStatusBar(game);
 
-  const index = await loadNativeIndex(context.extensionUri);
-
-  if (index !== undefined) {
-    catalog = new NativeCatalog(index, game);
-
-    context.subscriptions.push(
-      registerDiagnostics(() => catalog),
-      registerNativeHover(
-        () => catalog,
-        () => activeGame(),
-      ),
-    );
-  }
-
-  /** The catalog is per game, so it is rebuilt whenever the game changes. */
-  const refreshCatalog = (): void => {
-    if (index !== undefined) {
-      catalog = new NativeCatalog(index, activeGame());
-    }
-  };
+  /**
+   * The definition data is read on first use, not here. Loading it during
+   * activation cost every window the full parse — including windows that are
+   * never configured and windows where nothing ever asks for it.
+   */
+  const catalog = () => loadCatalog(context.extensionUri, activeGame());
 
   const manifestWatcher = workspace.createFileSystemWatcher(MANIFEST_GLOB);
 
   const onManifestAppeared = async (): Promise<void> => {
+    invalidateManifests();
+
     if (configured) {
       return;
     }
@@ -191,8 +175,17 @@ export async function activate(context: ExtensionContext) {
   };
 
   context.subscriptions.push(
+    registerDiagnostics({
+      scopesFor: (document: TextDocument) =>
+        loadScopeTable(context.extensionUri, getGameFor(document.uri)),
+    }),
+
+    registerNativeHover(catalog, (document) => getGameFor(document.uri)),
+
     manifestWatcher,
     manifestWatcher.onDidCreate(onManifestAppeared),
+    manifestWatcher.onDidDelete(() => invalidateManifests()),
+    manifestWatcher.onDidChange(() => invalidateManifests()),
 
     commands.registerCommand('cfxlua.game.gtav', async () => {
       if (await ensureConfigured()) {
@@ -217,7 +210,9 @@ export async function activate(context: ExtensionContext) {
     }),
 
     commands.registerCommand('cfxlua.natives.find', async () => {
-      if (catalog === undefined) {
+      const loaded = await catalog();
+
+      if (loaded === undefined) {
         window.showWarningMessage(
           'CfxLua: the native index is unavailable, so native search is disabled.',
         );
@@ -225,7 +220,7 @@ export async function activate(context: ExtensionContext) {
         return;
       }
 
-      await findNative(catalog, activeGame());
+      await findNative(loaded, activeGame());
     }),
 
     commands.registerCommand('cfxlua.resource.new', () =>
@@ -240,10 +235,10 @@ export async function activate(context: ExtensionContext) {
 
     commands.registerCommand('cfxlua.config.repair', async () => {
       resetNativeIndex();
+      invalidateManifests();
 
       try {
         await configure(context, activeGame());
-        refreshCatalog();
         window.showInformationMessage('CfxLua: configuration reapplied.');
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
@@ -258,12 +253,13 @@ export async function activate(context: ExtensionContext) {
 
     // Reflect folder-level game overrides as the user moves between editors
     window.onDidChangeActiveTextEditor((editor) => {
-      refreshCatalog();
       updateStatusBar(getGameFor(editor?.document.uri));
     }),
 
     // A folder added to a multi-root workspace may be the Cfx one.
     workspace.onDidChangeWorkspaceFolders(async () => {
+      invalidateManifests();
+
       if (!configured && (await shouldConfigure())) {
         log('Workspace folders changed; configuring');
         await ensureConfigured();
@@ -286,7 +282,6 @@ export async function activate(context: ExtensionContext) {
 
       const newGame = activeGame();
 
-      refreshCatalog();
       updateStatusBar(newGame);
       log(`Game setting changed to: ${newGame}`);
 

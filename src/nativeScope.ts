@@ -1,47 +1,24 @@
-import { tokenize } from './lua';
+import { forEachGlobalCall } from './lua';
 import type { Side } from './manifest';
-import type { NativeCatalog } from './nativeCatalog';
 
-/** Identifiers that introduce a declaration rather than a call. */
-const DECLARATION_KEYWORDS = new Set(['function', 'local']);
-
-/** Punctuation before an identifier that makes it a field, not a global. */
-const FIELD_ACCESS = new Set(['.', ':']);
+/** Side bits, matching the scope table built by fivem-lls-addon. */
+export const CLIENT = 1;
+export const SERVER = 2;
 
 /**
- * Globals the Cfx Lua runtime provides itself, mirroring library/runtime in
- * fivem-lls-addon.
+ * Native name to the sides it can be called from, as a bitmask.
  *
- * These take precedence over any native of the same name, and they exist on both
- * sides, so they can never be wrong-sided. It matters because the game natives
- * include a `WAIT` — meaning `Wait`, the most-called function in Cfx Lua, is
- * declared as a client native as well as the runtime's own `Citizen.Wait`.
- * Without this list every `Wait(0)` in a server script would be reported.
+ * Built at package time from the definition library: apisets are already merged
+ * across the sets a game loads, so a native with a server RPC variant is marked
+ * as both, and globals the Lua runtime provides itself — `Wait`, `CreateThread` —
+ * are absent, because those are not natives whichever side you are on.
  */
-const RUNTIME_GLOBALS = new Set([
-  'AddEventHandler',
-  'CreateThread',
-  'Citizen',
-  'Entity',
-  'GetPlayerIdentifiers',
-  'GetPlayerTokens',
-  'GetPlayers',
-  'Player',
-  'PerformHttpRequest',
-  'PerformHttpRequestAwait',
-  'RegisterNUICallback',
-  'RegisterNetEvent',
-  'RegisterServerEvent',
-  'RemoveEventHandler',
-  'SendNUIMessage',
-  'SetTimeout',
-  'TriggerClientEvent',
-  'TriggerEvent',
-  'TriggerLatentClientEvent',
-  'TriggerLatentServerEvent',
-  'TriggerServerEvent',
-  'Wait',
-]);
+export type ScopeTable = Record<string, number>;
+
+export const SIDE_BIT: Record<Side, number> = {
+  client: CLIENT,
+  server: SERVER,
+};
 
 export interface WrongSideCall {
   name: string;
@@ -49,6 +26,12 @@ export interface WrongSideCall {
   offset: number;
   /** The sides the native does support. */
   supported: Side[];
+}
+
+function sidesOf(bits: number): Side[] {
+  if (bits === (CLIENT | SERVER)) return ['client', 'server'];
+
+  return bits === SERVER ? ['server'] : ['client'];
 }
 
 /**
@@ -60,62 +43,28 @@ export interface WrongSideCall {
  *
  * - a native with a server RPC variant supports both sides, so it never reports
  * - a shared script runs on both sides, so callers skip it entirely
- * - runtime globals such as `TriggerEvent` are not natives, are absent from the
- *   index, and are left alone rather than guessed at
+ * - anything absent from the table — runtime globals, a resource's own functions —
+ *   is left alone rather than guessed at
  */
 export function findWrongSideCalls(
   text: string,
-  catalog: NativeCatalog,
+  scopes: ScopeTable,
   side: Side,
 ): WrongSideCall[] {
-  const tokens = tokenize(text);
+  const wanted = SIDE_BIT[side];
   const found: WrongSideCall[] = [];
 
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
+  forEachGlobalCall(text, (name, offset) => {
+    const bits = scopes[name];
 
-    if (token.type !== 'identifier') {
-      continue;
+    // `undefined` for anything that is not a native, and `& wanted` covers both
+    // the matching and the both-sides cases without allocating.
+    if (bits === undefined || (bits & wanted) !== 0) {
+      return;
     }
 
-    const next = tokens[i + 1];
-
-    // Only calls; a bare mention of a name is not an invocation.
-    if (
-      next === undefined ||
-      next.type !== 'punctuation' ||
-      next.value !== '('
-    ) {
-      continue;
-    }
-
-    const previous = tokens[i - 1];
-
-    if (
-      previous !== undefined &&
-      ((previous.type === 'identifier' &&
-        DECLARATION_KEYWORDS.has(previous.value)) ||
-        (previous.type === 'punctuation' && FIELD_ACCESS.has(previous.value)))
-    ) {
-      continue;
-    }
-
-    if (RUNTIME_GLOBALS.has(token.value)) {
-      continue;
-    }
-
-    const supported = catalog.sides(token.value);
-
-    if (supported === undefined || supported.has(side)) {
-      continue;
-    }
-
-    found.push({
-      name: token.value,
-      offset: token.offset,
-      supported: [...supported],
-    });
-  }
+    found.push({ name, offset, supported: sidesOf(bits) });
+  });
 
   return found;
 }

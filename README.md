@@ -383,7 +383,7 @@ When the extension activates (triggered by opening a `.lua` file, or by a resour
 
 4. **Runtime Configuration** — The Lua runtime version is set to `5.4`, nonstandard symbols are registered, and workspace ignore directories are configured to improve performance.
 
-5. **Native Index** — The compressed native index that ships with the definition library is read from the extension directory and kept in memory for native search, hash lookup and the wrong-side check. If it is missing, those features stay quiet and everything else works as normal.
+5. **Native Data, On Demand** — Two compressed data files ship with the definition library. The small one (which sides each native supports) is read the first time a script is actually checked; the large one (hashes, signatures) only when you search the natives or hover a hash. Nothing is read during activation, so a window that never needs them never pays for them, and if either is missing the features using it stay quiet while everything else works as normal.
 
 Settings are **left in place** when VS Code closes. Earlier versions removed them on deactivation and rewrote them on the next launch, which meant two `settings.json` writes and two language server reloads per session, a spurious diff in any tracked `.code-workspace`, and no guarantee the removal completed — VS Code does not wait for asynchronous work during shutdown. Use **CfxLua: Remove configuration** to undo everything deliberately.
 
@@ -426,7 +426,8 @@ cfxlua-vscode/
 ├── plugin/                       # Git submodule (ihyajb/fivem-lls-addon) — plugin and library definitions
 │   ├── plugin.lua               # Lua Language Server plugin for Cfx-specific preprocessing
 │   ├── config.json              # Default Lua Language Server addon configuration
-│   ├── natives-index.json.gz    # Every native as data, for search and diagnostics
+│   ├── native-scopes.json.gz    # Which sides each native supports
+│   ├── natives-index.json.gz    # Every native as data, for search and hovers
 │   └── library/
 │       ├── manifest/            # fxmanifest.lua / __resource.lua definitions
 │       ├── runtime/             # Cfx runtime type definitions
@@ -488,7 +489,7 @@ Open an issue with the native's name and the manifest entry that loads the file 
 
 ### Native search says the index is unavailable
 
-The index ships in the `plugin` submodule. In a development checkout, run `git submodule update --init --recursive`. Everything except native search, hash hover and the wrong-side check works without it.
+The data files ship in the `plugin` submodule. In a development checkout, run `git submodule update --init --recursive`. Everything except native search, hash hover and the wrong-side check works without them.
 
 ### Natives seem out of date
 

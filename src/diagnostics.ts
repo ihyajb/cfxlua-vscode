@@ -18,26 +18,51 @@ import {
   sidesForFile,
   suggestDirective,
 } from './manifest';
-import type { NativeCatalog } from './nativeCatalog';
-import { findWrongSideCalls } from './nativeScope';
+import { type ScopeTable, findWrongSideCalls } from './nativeScope';
 
 const SIDE_LABEL: Record<Side, string> = {
   client: 'client',
   server: 'server',
 };
 
-export interface DiagnosticsOptions {
-  nativeScope: boolean;
-  manifestKeys: boolean;
+interface Resource {
+  manifest: ParsedManifest;
+  /** Directory holding the manifest — the resource root. */
+  root: Uri;
 }
 
-function readOptions(): DiagnosticsOptions {
-  const config = workspace.getConfiguration('cfxlua');
+/**
+ * Resolved resources, keyed by the directory their manifest lives in, and the
+ * resource each document belongs to.
+ *
+ * Both exist because diagnostics run every few keystrokes: without them each
+ * refresh re-read the manifest from disk and walked the directory tree again.
+ * `null` records a miss, so a document outside any resource is not re-walked
+ * either. Cleared whenever a manifest changes.
+ */
+const resources = new Map<string, Resource | null>();
+const documentResource = new Map<string, string | null>();
 
-  return {
-    nativeScope: config.get('diagnostics.nativeScope', true),
-    manifestKeys: config.get('diagnostics.manifestKeys', true),
-  };
+function invalidateManifests(): void {
+  resources.clear();
+  documentResource.clear();
+}
+
+async function readManifest(directory: Uri): Promise<Resource | null> {
+  for (const name of ['fxmanifest.lua', '__resource.lua']) {
+    try {
+      const bytes = await workspace.fs.readFile(Uri.joinPath(directory, name));
+
+      return {
+        manifest: parseManifest(Buffer.from(bytes).toString('utf8')),
+        root: directory,
+      };
+    } catch {
+      // Not here; the caller keeps walking up.
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -46,33 +71,46 @@ function readOptions(): DiagnosticsOptions {
  * Resources nest — `resources/[category]/myresource/client/main.lua` — so the
  * nearest manifest above the file is the one that loads it.
  */
-async function findManifest(
-  file: Uri,
-): Promise<{ uri: Uri; manifest: ParsedManifest; root: Uri } | undefined> {
+async function findResource(file: Uri): Promise<Resource | null> {
+  const documentKey = file.toString();
+  const cachedKey = documentResource.get(documentKey);
+
+  if (cachedKey !== undefined) {
+    return cachedKey === null ? null : (resources.get(cachedKey) ?? null);
+  }
+
   const folder = workspace.getWorkspaceFolder(file);
 
   if (folder === undefined) {
-    return undefined;
+    documentResource.set(documentKey, null);
+
+    return null;
   }
 
   const root = folder.uri.path;
   let directory = Uri.joinPath(file, '..');
+  const walked: string[] = [];
 
   while (directory.path.startsWith(root)) {
-    for (const name of ['fxmanifest.lua', '__resource.lua']) {
-      const uri = Uri.joinPath(directory, name);
+    const key = directory.toString();
+    const known = resources.get(key);
+    const resource =
+      known !== undefined ? known : await readManifest(directory);
 
-      try {
-        const bytes = await workspace.fs.readFile(uri);
+    resources.set(key, resource);
+    walked.push(key);
 
-        return {
-          uri,
-          manifest: parseManifest(Buffer.from(bytes).toString('utf8')),
-          root: directory,
-        };
-      } catch {
-        // Not here; keep walking up.
+    if (resource !== null) {
+      // Every directory between the file and the manifest resolves to it.
+      for (const visited of walked) {
+        if (resources.get(visited) === null) {
+          resources.set(visited, resource);
+        }
       }
+
+      documentResource.set(documentKey, key);
+
+      return resource;
     }
 
     const parent = Uri.joinPath(directory, '..');
@@ -84,7 +122,9 @@ async function findManifest(
     directory = parent;
   }
 
-  return undefined;
+  documentResource.set(documentKey, null);
+
+  return null;
 }
 
 /** The path of `file` relative to `root`, with forward slashes. */
@@ -103,12 +143,12 @@ function relativePath(root: Uri, file: Uri): string {
  * bug in Cfx development and nothing else catches it, because the language server
  * loads every native into every file. This only reports a native when the sides
  * it supports and the sides the file runs on have nothing in common, so a native
- * with a server RPC variant — 159 of them — never produces a warning, and neither
- * does anything in a shared script.
+ * with a server RPC variant never produces a warning, and neither does anything
+ * in a shared script.
  */
 function nativeScopeDiagnostics(
   document: TextDocument,
-  catalog: NativeCatalog,
+  scopes: ScopeTable,
   sides: Set<Side>,
 ): Diagnostic[] {
   // Nothing to say about a file that runs on both sides, or one the manifest
@@ -119,7 +159,7 @@ function nativeScopeDiagnostics(
 
   const [side] = [...sides];
 
-  return findWrongSideCalls(document.getText(), catalog, side).map((call) => {
+  return findWrongSideCalls(document.getText(), scopes, side).map((call) => {
     const allowed = call.supported.map((s) => SIDE_LABEL[s]).join(' or ');
 
     const diagnostic = new Diagnostic(
@@ -176,60 +216,81 @@ function manifestDiagnostics(
   return diagnostics;
 }
 
+export interface DiagnosticsHost {
+  /** The scope table for the game the document belongs to, loaded on demand. */
+  scopesFor(document: TextDocument): Promise<ScopeTable | undefined>;
+}
+
 async function computeDiagnostics(
   document: TextDocument,
-  catalog: NativeCatalog | undefined,
+  host: DiagnosticsHost,
 ): Promise<Diagnostic[]> {
   if (document.languageId !== 'lua' || document.uri.scheme !== 'file') {
     return [];
   }
 
-  const options = readOptions();
+  const config = workspace.getConfiguration('cfxlua', document.uri);
 
   if (isManifestPath(document.uri.path)) {
-    return options.manifestKeys
+    return config.get('diagnostics.manifestKeys', true)
       ? manifestDiagnostics(document, parseManifest(document.getText()))
       : [];
   }
 
-  if (!options.nativeScope || catalog === undefined) {
+  if (!config.get('diagnostics.nativeScope', true)) {
     return [];
   }
 
-  const found = await findManifest(document.uri);
+  const resource = await findResource(document.uri);
 
-  if (found === undefined) {
+  if (resource === null) {
     return [];
   }
 
   const sides = sidesForFile(
-    found.manifest,
-    relativePath(found.root, document.uri),
+    resource.manifest,
+    relativePath(resource.root, document.uri),
   );
 
-  return nativeScopeDiagnostics(document, catalog, sides);
+  // Checked before the scope table is loaded: a file the manifest does not load,
+  // or one it loads on both sides, can never produce a warning, so there is no
+  // reason to read the table on its behalf.
+  if (sides.size !== 1) {
+    return [];
+  }
+
+  const scopes = await host.scopesFor(document);
+
+  return scopes === undefined
+    ? []
+    : nativeScopeDiagnostics(document, scopes, sides);
 }
 
 /**
  * Keeps diagnostics in step with the open editors.
  *
- * Work is debounced per document because the native scan runs over the whole
- * file, and editing a large script otherwise re-tokenises it on every keystroke.
+ * Work is debounced per document because the scan runs over the whole file, and
+ * editing a large script otherwise re-scans it on every keystroke.
  */
-export function registerDiagnostics(
-  getCatalog: () => NativeCatalog | undefined,
-): Disposable {
+export function registerDiagnostics(host: DiagnosticsHost): Disposable {
   const collection: DiagnosticCollection =
     languages.createDiagnosticCollection('cfxlua');
 
-  const timers = new Map<string, NodeJS.Timeout>();
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const refresh = async (document: TextDocument): Promise<void> => {
     try {
-      collection.set(
-        document.uri,
-        await computeDiagnostics(document, getCatalog()),
-      );
+      const diagnostics = await computeDiagnostics(document, host);
+
+      // Nothing to report and nothing reported before: skip the round trip.
+      if (
+        diagnostics.length === 0 &&
+        collection.get(document.uri) === undefined
+      ) {
+        return;
+      }
+
+      collection.set(document.uri, diagnostics);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
 
@@ -238,6 +299,10 @@ export function registerDiagnostics(
   };
 
   const schedule = (document: TextDocument, delay: number): void => {
+    if (document.languageId !== 'lua') {
+      return;
+    }
+
     const key = document.uri.toString();
     const existing = timers.get(key);
 
@@ -273,11 +338,13 @@ export function registerDiagnostics(
         timers.delete(key);
       }
 
+      documentResource.delete(key);
       collection.delete(document.uri);
     }),
     // A manifest edit changes which side every file in the resource runs on.
     workspace.onDidSaveTextDocument((document) => {
       if (isManifestPath(document.uri.path)) {
+        invalidateManifests();
         refreshAll();
       }
     }),
@@ -300,6 +367,7 @@ export function registerDiagnostics(
       }
 
       timers.clear();
+      invalidateManifests();
 
       for (const subscription of subscriptions) {
         subscription.dispose();
@@ -307,3 +375,6 @@ export function registerDiagnostics(
     },
   };
 }
+
+/** Exported so a manifest created or deleted on disk can drop the cache. */
+export { invalidateManifests };

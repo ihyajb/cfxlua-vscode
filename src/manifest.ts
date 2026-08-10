@@ -193,6 +193,35 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${source}$`, 'i');
 }
 
+interface CompiledScripts {
+  client: RegExp[];
+  server: RegExp[];
+  shared: RegExp[];
+}
+
+/**
+ * Compiled globs per manifest, so a document checked every few keystrokes does
+ * not recompile the same patterns each time. Keyed weakly: the entry goes away
+ * with the manifest it belongs to.
+ */
+const compiled = new WeakMap<ParsedManifest, CompiledScripts>();
+
+function compile(manifest: ParsedManifest): CompiledScripts {
+  let patterns = compiled.get(manifest);
+
+  if (patterns === undefined) {
+    patterns = {
+      client: manifest.scripts.client.map(globToRegExp),
+      server: manifest.scripts.server.map(globToRegExp),
+      shared: manifest.scripts.shared.map(globToRegExp),
+    };
+
+    compiled.set(manifest, patterns);
+  }
+
+  return patterns;
+}
+
 /**
  * Which sides a file runs on, given the manifest of the resource containing it.
  *
@@ -206,22 +235,23 @@ export function sidesForFile(
 ): Set<Side> {
   const normalized = path.replace(/\\/g, '/');
   const sides = new Set<Side>();
+  const patterns = compile(manifest);
 
-  const matches = (patterns: string[]): boolean =>
-    patterns.some((pattern) => globToRegExp(pattern).test(normalized));
+  const matches = (regexps: RegExp[]): boolean =>
+    regexps.some((regexp) => regexp.test(normalized));
 
-  if (matches(manifest.scripts.shared)) {
+  if (matches(patterns.shared)) {
     sides.add('client');
     sides.add('server');
 
     return sides;
   }
 
-  if (matches(manifest.scripts.client)) {
+  if (matches(patterns.client)) {
     sides.add('client');
   }
 
-  if (matches(manifest.scripts.server)) {
+  if (matches(patterns.server)) {
     sides.add('server');
   }
 

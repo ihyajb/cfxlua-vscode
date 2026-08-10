@@ -10,15 +10,17 @@ import {
   callSnippet,
   typedSignature,
 } from '../../nativeCatalog';
-import { findWrongSideCalls } from '../../nativeScope';
+import {
+  CLIENT,
+  SERVER,
+  type ScopeTable,
+  findWrongSideCalls,
+} from '../../nativeScope';
 
 const native = (over: Partial<IndexedNative>): IndexedNative => ({
   h: '0x1',
   ns: 'TEST',
   a: 'client',
-  p: [],
-  t: [],
-  r: [],
   ...over,
 });
 
@@ -27,44 +29,27 @@ const index: NativeIndex = {
   sets: {
     GTAV: {
       natives: {
-        // Client only: no server RPC variant exists.
-        SetNuiFocus: native({
-          h: '0xa1',
-          a: 'client',
-          p: ['hasFocus'],
-          t: ['boolean'],
-        }),
-        // Also published as a server RPC native, below.
-        SetEntityCoords: native({
-          h: '0xb2',
-          a: 'client',
-          p: ['entity'],
-          t: ['Entity'],
-        }),
+        SetNuiFocus: native({ h: '0xa1', p: 'hasFocus', t: 'boolean' }),
+        SetEntityCoords: native({ h: '0xb2', p: 'entity', t: 'Entity' }),
         GetEntityCoords: native({
           h: '0xc3',
-          a: 'client',
-          p: ['entity'],
-          t: ['Entity'],
-          r: ['vector3'],
+          p: 'entity',
+          t: 'Entity',
+          r: 'vector3',
+        }),
+        GetEntityMatrix: native({
+          h: '0xc4',
+          p: 'entity',
+          t: 'Entity',
+          r: 'vector3 right,vector3 forward',
         }),
       },
       aliases: { OldNuiFocus: 'SetNuiFocus' },
     },
     'CFX-NATIVE': {
       natives: {
-        SetEntityCoords: native({
-          h: '0xb2',
-          a: 'server',
-          p: ['entity'],
-          t: ['Entity'],
-        }),
-        GetPlayerIdentifier: native({
-          h: '0xd4',
-          a: 'server',
-          p: ['playerSrc'],
-        }),
-        RegisterCommand: native({ h: '0xe5', a: 'shared', p: ['commandName'] }),
+        SetEntityCoords: native({ h: '0xb2', a: 'server', p: 'entity' }),
+        GetPlayerIdentifier: native({ h: '0xd4', a: 'server', p: 'playerSrc' }),
       },
       aliases: {},
     },
@@ -72,9 +57,20 @@ const index: NativeIndex = {
   },
 };
 
-const catalog = new NativeCatalog(index, 'gtav');
+/** Shaped like the table fivem-lls-addon builds: name to side bitmask. */
+const scopes: ScopeTable = {
+  SetNuiFocus: CLIENT,
+  GetPlayerIdentifier: SERVER,
+  SetEntityCoords: CLIENT | SERVER,
+  RegisterCommand: CLIENT | SERVER,
+  // Wait and CreateThread are deliberately absent: the builder drops every
+  // global the Lua runtime declares, so the game's WAIT native cannot make
+  // Wait(0) look client-only in a server script.
+};
 
 describe('NativeCatalog', () => {
+  const catalog = new NativeCatalog(index, 'gtav');
+
   it('merges the game set with the CFX set', () => {
     assert.ok(catalog.names().includes('SetNuiFocus'));
     assert.ok(catalog.names().includes('GetPlayerIdentifier'));
@@ -87,34 +83,16 @@ describe('NativeCatalog', () => {
     );
   });
 
-  it('reports both sides for a native with a server RPC variant', () => {
-    assert.deepStrictEqual(
-      [...(catalog.sides('SetEntityCoords') ?? [])].sort(),
-      ['client', 'server'],
-    );
+  it('returns names sorted, and the same array on repeat calls', () => {
+    const first = catalog.names();
+
+    assert.deepStrictEqual(first, [...first].sort());
+    assert.strictEqual(catalog.names(), first);
   });
 
-  it('reports one side for natives that only have one', () => {
-    assert.deepStrictEqual(
-      [...(catalog.sides('SetNuiFocus') ?? [])],
-      ['client'],
-    );
-    assert.deepStrictEqual(
-      [...(catalog.sides('GetPlayerIdentifier') ?? [])],
-      ['server'],
-    );
-  });
-
-  it('treats a shared native as available on both sides', () => {
-    assert.deepStrictEqual(
-      [...(catalog.sides('RegisterCommand') ?? [])].sort(),
-      ['client', 'server'],
-    );
-  });
-
-  it('says nothing about names that are not natives', () => {
-    assert.strictEqual(catalog.sides('TriggerEvent'), undefined);
-    assert.strictEqual(catalog.sides('MyOwnHelper'), undefined);
+  it('prefers the game set over the shared set', () => {
+    // Both declare SetEntityCoords; the game's own signature should win.
+    assert.strictEqual(catalog.lookup('SetEntityCoords')?.t, 'Entity');
   });
 
   it('resolves a hash back to a native', () => {
@@ -127,7 +105,7 @@ describe('NativeCatalog', () => {
     assert.strictEqual(catalog.resolveAlias('OldNuiFocus'), 'SetNuiFocus');
   });
 
-  it('renders signatures and snippets', () => {
+  it('renders signatures from the joined fields', () => {
     const definition = catalog.lookup('GetEntityCoords');
 
     assert.ok(definition !== undefined);
@@ -140,13 +118,39 @@ describe('NativeCatalog', () => {
       'GetEntityCoords(${1:entity})',
     );
   });
+
+  it('renders multiple named returns', () => {
+    const definition = catalog.lookup('GetEntityMatrix');
+
+    assert.ok(definition !== undefined);
+    assert.strictEqual(
+      typedSignature('GetEntityMatrix', definition),
+      'function GetEntityMatrix(entity: Entity): vector3 right, vector3 forward',
+    );
+  });
+
+  it('handles natives with no parameters or returns', () => {
+    const definition = new NativeCatalog(index, 'rdr3').lookup(
+      'PromptSetEnabled',
+    );
+
+    assert.ok(definition !== undefined);
+    assert.strictEqual(
+      typedSignature('PromptSetEnabled', definition),
+      'function PromptSetEnabled()',
+    );
+    assert.strictEqual(
+      callSnippet('PromptSetEnabled', definition),
+      'PromptSetEnabled()',
+    );
+  });
 });
 
 describe('findWrongSideCalls', () => {
   it('flags a client-only native in a server script', () => {
     const found = findWrongSideCalls(
       'SetNuiFocus(true, true)',
-      catalog,
+      scopes,
       'server',
     );
 
@@ -159,7 +163,7 @@ describe('findWrongSideCalls', () => {
   it('flags a server-only native in a client script', () => {
     const found = findWrongSideCalls(
       'GetPlayerIdentifier(source, 0)',
-      catalog,
+      scopes,
       'client',
     );
 
@@ -169,25 +173,22 @@ describe('findWrongSideCalls', () => {
     );
   });
 
-  it('stays quiet about natives with a server RPC variant', () => {
+  it('stays quiet about natives valid on both sides', () => {
     assert.deepStrictEqual(
-      findWrongSideCalls('SetEntityCoords(ped)', catalog, 'server'),
+      findWrongSideCalls('SetEntityCoords(ped)', scopes, 'server'),
+      [],
+    );
+    assert.deepStrictEqual(
+      findWrongSideCalls("RegisterCommand('x')", scopes, 'server'),
       [],
     );
   });
 
-  it('stays quiet about shared natives', () => {
-    assert.deepStrictEqual(
-      findWrongSideCalls("RegisterCommand('x')", catalog, 'server'),
-      [],
-    );
-  });
-
-  it('stays quiet about runtime globals it knows nothing about', () => {
+  it('stays quiet about names absent from the table', () => {
     assert.deepStrictEqual(
       findWrongSideCalls(
-        "TriggerClientEvent('x', -1)\nCreateThread(function() end)",
-        catalog,
+        "TriggerClientEvent('x', -1)\nCreateThread(function() end)\nWait(0)",
+        scopes,
         'server',
       ),
       [],
@@ -196,25 +197,29 @@ describe('findWrongSideCalls', () => {
 
   it('ignores mentions that are not calls', () => {
     assert.deepStrictEqual(
-      findWrongSideCalls('local fn = SetNuiFocus', catalog, 'server'),
+      findWrongSideCalls('local fn = SetNuiFocus', scopes, 'server'),
       [],
     );
   });
 
   it('ignores a local function that shares a native name', () => {
     assert.deepStrictEqual(
-      findWrongSideCalls('local function SetNuiFocus() end', catalog, 'server'),
+      findWrongSideCalls('local function SetNuiFocus() end', scopes, 'server'),
+      [],
+    );
+    assert.deepStrictEqual(
+      findWrongSideCalls('function SetNuiFocus() end', scopes, 'server'),
       [],
     );
   });
 
   it('ignores method and field calls', () => {
     assert.deepStrictEqual(
-      findWrongSideCalls('nui:SetNuiFocus(true)', catalog, 'server'),
+      findWrongSideCalls('nui:SetNuiFocus(true)', scopes, 'server'),
       [],
     );
     assert.deepStrictEqual(
-      findWrongSideCalls('helpers.SetNuiFocus(true)', catalog, 'server'),
+      findWrongSideCalls('helpers.SetNuiFocus(true)', scopes, 'server'),
       [],
     );
   });
@@ -222,15 +227,24 @@ describe('findWrongSideCalls', () => {
   it('ignores occurrences in comments and strings', () => {
     assert.deepStrictEqual(
       findWrongSideCalls(
-        "-- SetNuiFocus(true)\nprint('SetNuiFocus(true)')",
-        catalog,
+        "-- SetNuiFocus(true)\nprint('SetNuiFocus(true)')\n--[[ SetNuiFocus(1) ]]",
+        scopes,
         'server',
       ),
       [],
     );
   });
 
-  it('reports every offending call in a file', () => {
+  it('allows whitespace between the name and the call', () => {
+    assert.deepStrictEqual(
+      findWrongSideCalls('SetNuiFocus  (true)', scopes, 'server').map(
+        (call) => call.name,
+      ),
+      ['SetNuiFocus'],
+    );
+  });
+
+  it('reports every offending call in a file, with usable offsets', () => {
     const source = [
       'RegisterCommand("x", function()',
       '  SetNuiFocus(true, true)',
@@ -239,56 +253,59 @@ describe('findWrongSideCalls', () => {
       'end)',
     ].join('\n');
 
-    assert.strictEqual(findWrongSideCalls(source, catalog, 'server').length, 2);
+    const found = findWrongSideCalls(source, scopes, 'server');
+
+    assert.strictEqual(found.length, 2);
+
+    for (const call of found) {
+      assert.strictEqual(
+        source.slice(call.offset, call.offset + call.name.length),
+        call.name,
+      );
+    }
   });
 });
 
 /**
- * The rule is only as good as the data behind it, so these run against the index
- * that actually ships. A regression here means real users would see warnings on
- * natives that are perfectly legal where they wrote them.
+ * The rule is only as good as the data behind it, so these run against the
+ * artifacts that actually ship. A regression here means real users would see
+ * warnings on natives that are perfectly legal where they wrote them.
  */
-describe('findWrongSideCalls against the shipped index', () => {
-  const file = path.join(
-    __dirname,
-    '..',
-    '..',
-    '..',
-    'plugin',
-    'natives-index.json.gz',
-  );
+describe('against the shipped artifacts', () => {
+  const read = (name: string): unknown => {
+    const file = path.join(__dirname, '..', '..', '..', 'plugin', name);
 
-  let shipped: NativeCatalog | undefined;
+    return JSON.parse(gunzipSync(readFileSync(file)).toString('utf8'));
+  };
+
+  let shipped: ScopeTable | undefined;
 
   try {
-    shipped = new NativeCatalog(
-      JSON.parse(
-        gunzipSync(readFileSync(file)).toString('utf8'),
-      ) as NativeIndex,
-      'gtav',
-    );
+    shipped = (
+      read('native-scopes.json.gz') as {
+        games: Record<string, ScopeTable>;
+      }
+    ).games.GTAV;
   } catch {
     shipped = undefined;
   }
 
-  const withIndex = it.skipIf(shipped === undefined);
+  const withScopes = it.skipIf(shipped === undefined);
 
-  withIndex('flags a client-only native in a server script', () => {
-    const found = findWrongSideCalls(
-      'SetNuiFocus(true, true)',
-      shipped as NativeCatalog,
-      'server',
-    );
-
+  withScopes('flags a client-only native in a server script', () => {
     assert.deepStrictEqual(
-      found.map((call) => call.name),
+      findWrongSideCalls(
+        'SetNuiFocus(true, true)',
+        shipped as ScopeTable,
+        'server',
+      ).map((call) => call.name),
       ['SetNuiFocus'],
     );
   });
 
-  withIndex('leaves server-usable game natives alone', () => {
-    // Every one of these is a GTAV native with a server RPC variant, and all
-    // of them are routinely called from server scripts.
+  withScopes('leaves server-usable game natives alone', () => {
+    // Every one of these is a GTAV native with a server RPC variant, and all of
+    // them are routinely called from server scripts.
     const source = [
       'SetEntityCoords(ped, 0.0, 0.0, 0.0, false, false, false, false)',
       'GetEntityCoords(ped)',
@@ -301,44 +318,43 @@ describe('findWrongSideCalls against the shipped index', () => {
     ].join('\n');
 
     assert.deepStrictEqual(
-      findWrongSideCalls(source, shipped as NativeCatalog, 'server'),
+      findWrongSideCalls(source, shipped as ScopeTable, 'server'),
       [],
     );
   });
 
-  withIndex('leaves the runtime API alone on both sides', () => {
+  withScopes('leaves the runtime API alone on both sides', () => {
     const source = [
       'CreateThread(function() end)',
       'Wait(0)',
+      'SetTimeout(100, function() end)',
       "TriggerEvent('x')",
       "TriggerClientEvent('x', -1)",
       "RegisterNetEvent('x')",
       "AddEventHandler('x', function() end)",
       'GetPlayers()',
       "exports('x', function() end)",
-      'json.encode({})',
       "PerformHttpRequest('https://example.com', function() end)",
     ].join('\n');
 
     for (const side of ['client', 'server'] as const) {
       assert.deepStrictEqual(
-        findWrongSideCalls(source, shipped as NativeCatalog, side),
+        findWrongSideCalls(source, shipped as ScopeTable, side),
         [],
         `unexpected warning on the ${side}`,
       );
     }
   });
-});
 
-describe('runtime globals', () => {
-  it('never reports Wait, which the runtime provides on both sides', () => {
-    // The game natives also declare a `WAIT`, so without the runtime-globals
-    // list this is flagged in every server script.
-    const shippedCatalog = new NativeCatalog(index, 'gtav');
+  withScopes('excludes runtime globals from the table entirely', () => {
+    const table = shipped as ScopeTable;
 
-    assert.deepStrictEqual(
-      findWrongSideCalls('Wait(0)', shippedCatalog, 'server'),
-      [],
-    );
+    for (const name of ['Wait', 'CreateThread', 'SetTimeout', 'GetPlayers']) {
+      assert.strictEqual(
+        table[name],
+        undefined,
+        `${name} should not be in the scope table`,
+      );
+    }
   });
 });

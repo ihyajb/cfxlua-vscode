@@ -1,6 +1,10 @@
-import type { Side } from './manifest';
-
-/** One native, as stored in the index. Keys are short to keep the file small. */
+/**
+ * One native, as stored in the index.
+ *
+ * Keys are short, and the parameter and return lists are comma-joined strings
+ * rather than arrays, because the library holds 14,500 of these and a consumer
+ * only ever splits the handful it is about to display. Absent means empty.
+ */
 export interface IndexedNative {
   /** Native hash, lowercase, `0x`-prefixed. */
   h: string;
@@ -9,11 +13,11 @@ export interface IndexedNative {
   /** Apiset: `client`, `server` or `shared`. */
   a: string;
   /** Parameter names, in signature order. */
-  p: string[];
+  p?: string;
   /** Parameter types, aligned with `p`. */
-  t: string[];
+  t?: string;
   /** Return values, each `type` or `type name`. */
-  r: string[];
+  r?: string;
 }
 
 export interface NativeSet {
@@ -26,42 +30,52 @@ export interface NativeIndex {
   sets: Record<string, NativeSet>;
 }
 
+/** The set loaded alongside whichever game is selected. */
+const SHARED_SET = 'CFX-NATIVE';
+
+const split = (value: string | undefined): string[] =>
+  value === undefined || value === '' ? [] : value.split(',');
+
+export const paramNames = (native: IndexedNative): string[] => split(native.p);
+export const paramTypes = (native: IndexedNative): string[] => split(native.t);
+export const returnValues = (native: IndexedNative): string[] =>
+  split(native.r);
+
 /**
  * A read-only view of the natives available for one game.
  *
- * The CFX set is always loaded alongside the selected game's, and the two
- * overlap: a game native that can also be called from the server appears in
- * both, once as `client` and once as `server`. Merging them is what makes the
- * apiset trustworthy — read either set alone and 159 natives look one-sided when
- * they are not.
+ * Instances are cached per game by the loader, so the derived lookups below are
+ * built at most once each per session rather than on every editor change.
  */
 export class NativeCatalog {
-  private byHash: Map<string, string> | undefined;
+  private readonly sets: NativeSet[];
 
-  constructor(
-    private readonly index: NativeIndex,
-    private readonly game: string,
-  ) {}
+  private sortedNames: string[] | undefined;
+  private hashes: Map<string, string> | undefined;
 
-  private get sets(): NativeSet[] {
-    const keys = [this.game.toUpperCase(), 'CFX-NATIVE'];
-
-    return keys
-      .map((key) => this.index.sets[key])
+  constructor(index: NativeIndex, game: string) {
+    // Resolved once. This used to be a getter, which rebuilt the array on every
+    // lookup — including once per identifier while scanning a document.
+    this.sets = [game.toUpperCase(), SHARED_SET]
+      .map((key) => index.sets[key])
       .filter((set): set is NativeSet => set !== undefined);
   }
 
-  /** Every native name the current game can call, unsorted. */
+  /** Every native name the current game can call, sorted. Built once. */
   public names(): string[] {
-    const names = new Set<string>();
+    if (this.sortedNames === undefined) {
+      const names = new Set<string>();
 
-    for (const set of this.sets) {
-      for (const name of Object.keys(set.natives)) {
-        names.add(name);
+      for (const set of this.sets) {
+        for (const name of Object.keys(set.natives)) {
+          names.add(name);
+        }
       }
+
+      this.sortedNames = [...names].sort();
     }
 
-    return [...names];
+    return this.sortedNames;
   }
 
   /**
@@ -80,52 +94,21 @@ export class NativeCatalog {
     return undefined;
   }
 
-  /**
-   * Where `name` can be called from, or undefined when it is not a native at all
-   * — runtime globals such as `TriggerEvent` are not in the index and must not be
-   * reported.
-   */
-  public sides(name: string): Set<Side> | undefined {
-    let found = false;
-    const sides = new Set<Side>();
-
-    for (const set of this.sets) {
-      const native = set.natives[name];
-
-      if (native === undefined) {
-        continue;
-      }
-
-      found = true;
-
-      if (native.a === 'shared') {
-        sides.add('client');
-        sides.add('server');
-      } else if (native.a === 'server') {
-        sides.add('server');
-      } else {
-        sides.add('client');
-      }
-    }
-
-    return found ? sides : undefined;
-  }
-
   /** The native a hash belongs to, for `Citizen.InvokeNative(0x…)` calls. */
   public fromHash(hash: string): string | undefined {
-    if (this.byHash === undefined) {
-      this.byHash = new Map();
+    if (this.hashes === undefined) {
+      this.hashes = new Map();
 
       for (const set of this.sets) {
         for (const [name, native] of Object.entries(set.natives)) {
-          if (native.h !== undefined && !this.byHash.has(native.h)) {
-            this.byHash.set(native.h.toLowerCase(), name);
+          if (native.h !== undefined && !this.hashes.has(native.h)) {
+            this.hashes.set(native.h, name);
           }
         }
       }
     }
 
-    return this.byHash.get(hash.toLowerCase());
+    return this.hashes.get(hash.toLowerCase());
   }
 
   /** The name a deprecated alias points at. */
@@ -144,23 +127,27 @@ export class NativeCatalog {
 
 /** `GetEntityCoords(entity, alive)` — the call signature, without types. */
 export function callSignature(name: string, native: IndexedNative): string {
-  return `${name}(${native.p.join(', ')})`;
+  return `${name}(${paramNames(native).join(', ')})`;
 }
 
 /** The full annotated signature, for hover text. */
 export function typedSignature(name: string, native: IndexedNative): string {
-  const params = native.p
-    .map((param, i) => `${param}: ${native.t[i] ?? 'any'}`)
+  const types = paramTypes(native);
+  const params = paramNames(native)
+    .map((param, i) => `${param}: ${types[i] ?? 'any'}`)
     .join(', ');
 
-  const returns = native.r.length > 0 ? `: ${native.r.join(', ')}` : '';
+  const returns =
+    native.r === undefined ? '' : `: ${returnValues(native).join(', ')}`;
 
   return `function ${name}(${params})${returns}`;
 }
 
 /** A snippet body that drops the caller straight into the first argument. */
 export function callSnippet(name: string, native: IndexedNative): string {
-  const params = native.p.map((param, i) => `\${${i + 1}:${param}}`).join(', ');
+  const params = paramNames(native)
+    .map((param, i) => `\${${i + 1}:${param}}`)
+    .join(', ');
 
   return `${name}(${params})`;
 }

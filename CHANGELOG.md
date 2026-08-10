@@ -52,6 +52,43 @@
   triggers configuration.
 - Definition libraries now include `library/manifest`.
 
+### Performance
+
+- **The language server plugin skips the work it does not need.** `OnSetText` runs
+  for every Lua file in the workspace on every edit, and always made two
+  full-text pattern scans looking for safe navigation. A plain search for `?`
+  now guards both: **15.7x faster** on a file that contains none, which is nearly
+  all of them. It also returns nothing instead of an empty table when there is
+  nothing to rewrite. `plugin.lua` now has a test suite that runs it in a real
+  Lua 5.4 runtime, and all sixteen behaviour cases are unchanged.
+- **Nothing is loaded during activation.** The native data was read and parsed on
+  every activation — around 28ms — including in windows that were never
+  configured and windows where no feature ever asked for it. Both files now load
+  on first use.
+- **The native data is split by how often it is needed.** The wrong-side check
+  only needs to know which sides a native supports, so that is now its own
+  119 KiB file that loads in ~4.5ms, instead of parsing the full 354 KiB index at
+  ~19ms. The full index is read only for native search and hash hovers.
+- **Parameter and return lists are stored joined rather than as arrays**, which
+  removed 43,000 arrays from the parsed index and took its load from 28ms to
+  19ms.
+- **The wrong-side scan no longer tokenises the document.** It walks the text once
+  and allocates only for the names it reports, and side lookups are a bitmask
+  test rather than a `Set` built per call site: **1.6x faster**, and no longer
+  linear in allocations.
+- **Manifests are parsed once and their globs compiled once.** Each diagnostic
+  refresh used to re-read the manifest from disk, walk the directory tree again,
+  and recompile every glob; matching a path is now **14x faster** and the read is
+  gone. Caches are dropped when a manifest changes.
+- **The catalog is cached per game.** It was rebuilt on every editor change, which
+  discarded its sorted name list and hash map each time you switched tabs. The
+  Find Native list is built once per game rather than on every invocation.
+- The generator fetches all three native documents concurrently instead of one
+  after another, and writes each definition file once instead of creating it and
+  then appending to it.
+- `addon`: the vsix no longer carries the definition submodule's own tooling or
+  `node_modules`.
+
 ### Changed — toolchain
 
 - **Migrated to Bun.** It is now the package manager, bundler and test runner.

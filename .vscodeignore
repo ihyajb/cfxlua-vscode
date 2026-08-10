@@ -1,7 +1,6 @@
 .vscode/**
 .github/**
 src/**
-node_modules/**
 .gitignore
 .gitmodules
 bun.lock
@@ -9,3 +8,11 @@ biome.json
 **/tsconfig.json
 **/*.map
 **/*.ts
+**/node_modules/**
+
+# The definition submodule carries its own tooling; only its data ships.
+plugin/.github/**
+plugin/scripts/**
+plugin/package.json
+plugin/bun.lock
+plugin/README.md

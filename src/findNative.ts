@@ -19,10 +19,25 @@ function documentationUrl(game: string, native: IndexedNative): string {
     : `https://docs.fivem.net/natives/?_${native.h}`;
 }
 
-function items(catalog: NativeCatalog): NativeItem[] {
+/**
+ * Built lists, per game.
+ *
+ * There are over seven thousand natives per game and each item carries two
+ * formatted strings, so building the list is worth doing once rather than on
+ * every invocation of the command.
+ */
+const cache = new Map<string, NativeItem[]>();
+
+function items(catalog: NativeCatalog, game: string): NativeItem[] {
+  const cached = cache.get(game);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const result: NativeItem[] = [];
 
-  for (const name of catalog.names().sort()) {
+  for (const name of catalog.names()) {
     const native = catalog.lookup(name);
 
     if (native === undefined) {
@@ -39,6 +54,8 @@ function items(catalog: NativeCatalog): NativeItem[] {
     });
   }
 
+  cache.set(game, result);
+
   return result;
 }
 
@@ -52,11 +69,14 @@ export async function findNative(
   catalog: NativeCatalog,
   game: string,
 ): Promise<void> {
-  const picked = await window.showQuickPick(items(catalog), {
-    title: `${game.toUpperCase()} natives`,
-    placeHolder: 'Search by name, namespace or hash',
-    matchOnDescription: true,
-  });
+  const picked = await window.showQuickPick(
+    items(catalog, game.toUpperCase()),
+    {
+      title: `${game.toUpperCase()} natives`,
+      placeHolder: 'Search by name, namespace or hash',
+      matchOnDescription: true,
+    },
+  );
 
   if (picked === undefined) {
     return;

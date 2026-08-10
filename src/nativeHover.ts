@@ -7,7 +7,7 @@ import {
   type TextDocument,
   languages,
 } from 'vscode';
-import { type NativeCatalog, typedSignature } from './nativesIndex';
+import { type NativeCatalog, typedSignature } from './nativeCatalog';
 
 /** A hexadecimal literal, which is how an unnamed native is invoked. */
 const HASH = /0[xX][0-9a-fA-F]{4,16}/;
@@ -21,19 +21,16 @@ const HASH = /0[xX][0-9a-fA-F]{4,16}/;
  * definition files, so this deliberately only handles hashes.
  */
 export function registerNativeHover(
-  getCatalog: () => NativeCatalog | undefined,
-  getGame: () => string,
+  getCatalog: () => Promise<NativeCatalog | undefined>,
+  getGame: (document: TextDocument) => string,
 ): Disposable {
   return languages.registerHoverProvider(
     { language: 'lua' },
     {
-      provideHover(document: TextDocument, position: Position) {
-        const catalog = getCatalog();
-
-        if (catalog === undefined) {
-          return undefined;
-        }
-
+      async provideHover(document: TextDocument, position: Position) {
+        // Matched before anything is loaded. Hover fires for every word the
+        // pointer crosses, and only a hex literal can produce a result here, so
+        // the index is never read on behalf of ordinary identifiers.
         const range: Range | undefined = document.getWordRangeAtPosition(
           position,
           HASH,
@@ -43,8 +40,13 @@ export function registerNativeHover(
           return undefined;
         }
 
-        const hash = document.getText(range);
-        const name = catalog.fromHash(hash);
+        const catalog = await getCatalog();
+
+        if (catalog === undefined) {
+          return undefined;
+        }
+
+        const name = catalog.fromHash(document.getText(range));
 
         if (name === undefined) {
           return undefined;
@@ -57,7 +59,7 @@ export function registerNativeHover(
         }
 
         const url =
-          getGame().toLowerCase() === 'rdr3'
+          getGame(document).toLowerCase() === 'rdr3'
             ? `https://rdr3natives.com/?native=${native.h}`
             : `https://docs.fivem.net/natives/?_${native.h}`;
 

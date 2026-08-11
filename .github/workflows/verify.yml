@@ -1,0 +1,31 @@
+name: Verify
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run typecheck
+
+      # Submodules are checked out above, so the tests that assert against the
+      # shipped native index run here rather than skipping.
+      - run: bun test src
+
+      - run: bun run check
+
+      # Proves the extension still packages, without publishing anything.
+      - run: bunx @vscode/vsce package --no-dependencies --out cfxlua.vsix

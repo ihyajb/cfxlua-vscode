@@ -1,13 +1,18 @@
 .vscode/**
-.vscode-test/**
-out/**
-node_modules/**
+.github/**
 src/**
 .gitignore
-.yarnrc
-webpack.config.js
-vsc-extension-quickstart.md
+.gitmodules
+bun.lock
+biome.json
 **/tsconfig.json
-**/.eslintrc.json
 **/*.map
 **/*.ts
+**/node_modules/**
+
+# The definition submodule carries its own tooling; only its data ships.
+plugin/.github/**
+plugin/scripts/**
+plugin/package.json
+plugin/bun.lock
+plugin/README.md

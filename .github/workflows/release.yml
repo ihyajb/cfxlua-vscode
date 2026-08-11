@@ -12,9 +12,9 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
+          bun-version: latest
 
       - name: Bumping version
         uses: jpb06/bump-package@latest
@@ -25,19 +25,32 @@ jobs:
           commit-user: GitHub Actions
           commit-user-email: 41898282+github-actions[bot]@users.noreply.github.com
 
-      - run: yarn install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+
+      - name: Verify
+        run: |
+          bun run typecheck
+          bun test src
+          bun run check
+
+      # Packaged here rather than by the publish action so publishing does not
+      # depend on a package manager the action knows how to drive: vsce is a Node
+      # CLI and has no bun integration. --no-dependencies is safe because the
+      # extension bundles its own code and ships no runtime dependencies.
+      - name: Package extension
+        run: bunx @vscode/vsce package --no-dependencies --out cfxlua.vsix
+
       - name: Publish to Visual Studio Marketplace
-        id: vs-marketplace
         uses: HaaLeo/publish-vscode-extension@v2
         with:
           pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
           registryUrl: https://marketplace.visualstudio.com
-          yarn: true
+          extensionFile: cfxlua.vsix
           skipDuplicate: true
 
-      # Reuses the exact .vsix built above so both registries get the same
-      # artifact. Skipped until the OPEN_VSX_TOKEN secret is configured
-      # (requires the 'ihyajb' namespace to exist on open-vsx.org).
+      # Publishes the exact same artifact, so both registries get identical
+      # bytes. Skipped until the OPEN_VSX_TOKEN secret is configured (requires
+      # the 'ihyajb' namespace to exist on open-vsx.org).
       - name: Publish to Open VSX Registry
         if: ${{ env.OPEN_VSX_TOKEN != '' }}
         env:
@@ -46,5 +59,11 @@ jobs:
         with:
           pat: ${{ secrets.OPEN_VSX_TOKEN }}
           registryUrl: https://open-vsx.org
-          extensionFile: ${{ steps.vs-marketplace.outputs.vsixPath }}
+          extensionFile: cfxlua.vsix
           skipDuplicate: true
+
+      - name: Upload packaged extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfxlua.vsix
+          path: cfxlua.vsix

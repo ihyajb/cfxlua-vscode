@@ -1,5 +1,4 @@
 import { type ExtensionContext, Uri, workspace } from 'vscode';
-import { extension } from './extension';
 import { log } from './logger';
 
 /** Everything the extension bundles for the Lua Language Server. */
@@ -51,8 +50,8 @@ export default async function ensureStorage(
   context: ExtensionContext,
 ): Promise<void> {
   const storageUri = context.globalStorageUri;
-  const sourceUri = Uri.joinPath(extension.extensionUri, 'plugin');
-  const version: string = extension.packageJSON.version;
+  const sourceUri = Uri.joinPath(context.extensionUri, 'plugin');
+  const version: string = context.extension.packageJSON.version;
 
   if (await isUpToDate(storageUri, version)) {
     log(`Storage already up to date (v${version}), skipping copy`);

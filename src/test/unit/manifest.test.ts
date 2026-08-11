@@ -3,6 +3,7 @@ import * as assert from 'node:assert';
 import {
   globToRegExp,
   isManifestPath,
+  manifestGame,
   parseManifest,
   sidesForFile,
   suggestDirective,
@@ -204,5 +205,20 @@ describe('isManifestPath', () => {
   it('rejects ordinary scripts', () => {
     assert.ok(!isManifestPath('/resources/my/client/main.lua'));
     assert.ok(!isManifestPath('/resources/my/fxmanifest.lua.bak'));
+  });
+});
+
+describe('manifestGame', () => {
+  it('maps the native set name onto the manifest value', () => {
+    // The manifest key is `gta5`; `gtav` is only the definition folder. Getting
+    // this wrong warned on the manifest of every FiveM resource.
+    assert.strictEqual(manifestGame('gtav'), 'gta5');
+    assert.strictEqual(manifestGame('GTAV'), 'gta5');
+    assert.strictEqual(manifestGame('rdr3'), 'rdr3');
+    assert.strictEqual(manifestGame('RDR3'), 'rdr3');
+  });
+
+  it('falls back to gta5 for anything unrecognised', () => {
+    assert.strictEqual(manifestGame(''), 'gta5');
   });
 });

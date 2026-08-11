@@ -1,13 +1,14 @@
 import { Uri, ViewColumn, window, workspace } from 'vscode';
 import { log } from './logger';
+import { manifestGame } from './manifest';
 
 const RESOURCE_NAME = /^[A-Za-z0-9_-]+$/;
 
 function manifest(name: string, game: string): string {
-  const rdr3 = game.toLowerCase() === 'rdr3';
+  const rdr3 = manifestGame(game) === 'rdr3';
 
   return `fx_version 'cerulean'
-game '${rdr3 ? 'rdr3' : 'gtav'}'
+game '${manifestGame(game)}'
 ${rdr3 ? "rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aware my resources *will* become incompatible once RedM ships.'\n" : ''}lua54 'yes'
 
 name '${name}'

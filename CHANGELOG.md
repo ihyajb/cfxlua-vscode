@@ -112,6 +112,17 @@
 
 ### Fixed
 
+- **`game 'gta5'` was reported as invalid on every manifest.** The manifest key
+  takes `gta5`; `gtav` is only the name of the definition folder. The value enum
+  said `gtav`, the `fxmanifest` snippet inserted `gtav`, and **CfxLua: New
+  Resource** scaffolded it — so every FiveM resource was warned about, and the
+  snippet and scaffold produced a manifest that warned about itself. Also dropped
+  `server` from the game values, which is not one.
+- **Manifest value enums no longer bind.** Every value-taking key accepts a plain
+  string alongside the suggested values, so completion still offers them but a
+  value these definitions have not heard of can never be flagged. The `gta5` bug
+  was only visible because the enum was strict; the next platform addition would
+  have done the same thing.
 - `yarn test` pointed at a test harness that was never written, so only part of the
   suite could run. Tests now run under `bun test`.
 - `lint` and `format` invoked `pnpm` from inside a yarn project, failing anywhere

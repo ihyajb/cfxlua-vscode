@@ -103,7 +103,7 @@
     "prefix": "fxmanifest",
     "body": [
       "fx_version 'cerulean'",
-      "game '${1|gtav,rdr3,common|}'",
+      "game '${1|gta5,rdr3,common|}'",
       "lua54 'yes'",
       "",
       "name '${2:resource}'",

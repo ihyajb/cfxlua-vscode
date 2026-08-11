@@ -309,6 +309,17 @@ export function suggestDirective(name: string): string | undefined {
   return best;
 }
 
+/**
+ * The value a manifest's `game` key takes for a given native set.
+ *
+ * These are not the same identifier: `cfxlua.game` is `gtav` because that is the
+ * name of the definition folder, while the manifest wants `gta5`. Writing the
+ * wrong one produces a warning on the manifest of every resource.
+ */
+export function manifestGame(game: string): 'gta5' | 'rdr3' {
+  return game.toLowerCase() === 'rdr3' ? 'rdr3' : 'gta5';
+}
+
 export function isManifestPath(path: string): boolean {
   return /[\\/](fxmanifest|__resource)\.lua$/i.test(path);
 }
